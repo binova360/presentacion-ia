@@ -1,0 +1,1161 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Binova 360° — Sistema de Recordación Automática</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@300;400;500;600;700&display=swap" rel="stylesheet" />
+  <style>
+    :root {
+      --primary: #b349ff;
+      --primary-dark: #7b1fa3;
+      --primary-light: #d48fff;
+      --bg-dark: #0a0a0a;
+      --bg-light: #f4f4f7;
+      --white: #ffffff;
+      --text-dark: #0d0d0d;
+      --text-muted: #6b7280;
+      --green: #22c55e;
+      --red: #ef4444;
+      --yellow: #f59e0b;
+      --border: #e5e7eb;
+    }
+    *, *::before, *::after { margin: 0; padding: 0; box-sizing: border-box; }
+    html, body { height: 100%; font-family: 'Space Grotesk', sans-serif; overflow: hidden; background: var(--bg-dark); }
+
+    /* ─── STRUCTURE ─── */
+    .presentation { width: 100vw; height: 100vh; position: relative; overflow: hidden; }
+
+    .slide {
+      position: absolute; inset: 0;
+      display: flex; flex-direction: column;
+      justify-content: center; align-items: center;
+      padding: 62px 72px 72px;
+      opacity: 0; transform: translateY(28px);
+      /* opacity starts 40ms after active — matches a1 so background & content appear together */
+      transition: opacity .42s .04s cubic-bezier(.22,1,.36,1), transform .42s cubic-bezier(.22,1,.36,1);
+      pointer-events: none; overflow: hidden;
+    }
+    .slide.active { opacity: 1; transform: translateY(0); pointer-events: all; }
+    /* exit: no delay — fade out immediately */
+    .slide.exit   { opacity: 0; transform: translateY(-24px); transition: opacity .35s cubic-bezier(.22,1,.36,1), transform .35s cubic-bezier(.22,1,.36,1); }
+    .slide-dark  { background: var(--bg-dark); color: #fff; }
+    .slide-light { background: var(--bg-light); color: var(--text-dark); }
+    .slide-white { background: var(--white); color: var(--text-dark); }
+
+    /* ─── PROGRESS BAR ─── */
+    .progress-bar {
+      position: fixed; top: 0; left: 0; height: 3px; z-index: 200;
+      background: linear-gradient(90deg, var(--primary), var(--primary-light));
+      transition: width .5s ease;
+      box-shadow: 0 0 10px rgba(179,73,255,.6);
+    }
+
+    /* ─── LOGO ─── */
+    .logo {
+      position: fixed; top: 20px; left: 24px; z-index: 200;
+      display: flex; align-items: center;
+      transition: color .4s ease;
+    }
+    .logo.on-dark  { color: #fff; }
+    .logo.on-light { color: #8e05c2; }
+
+    /* ─── NAV — ghost by default, visible on hover ─── */
+    .nav {
+      position: fixed; bottom: 22px; left: 50%; transform: translateX(-50%);
+      display: flex; align-items: center; gap: 12px; z-index: 200;
+      background: rgba(10,10,10,.15); backdrop-filter: blur(12px);
+      border: 1px solid rgba(255,255,255,.08); padding: 8px 16px; border-radius: 100px;
+      transition: background .3s, border-color .3s;
+    }
+    .nav:hover {
+      background: rgba(10,10,10,.75);
+      border-color: rgba(179,73,255,.3);
+    }
+    .nav-btn {
+      width: 32px; height: 32px; border-radius: 50%;
+      border: 1.5px solid rgba(255,255,255,.12); background: transparent;
+      color: rgba(255,255,255,.3); cursor: pointer;
+      display: flex; align-items: center; justify-content: center;
+      font-size: 13px; transition: all .2s;
+    }
+    .nav:hover .nav-btn { color: rgba(255,255,255,.7); border-color: rgba(255,255,255,.25); }
+    .nav-btn:hover { background: var(--primary) !important; border-color: var(--primary) !important; color: #fff !important; box-shadow: 0 0 14px rgba(179,73,255,.5); }
+    .nav-counter {
+      color: rgba(255,255,255,.2); font-size: 12px; font-weight: 600;
+      min-width: 44px; text-align: center; transition: color .3s;
+    }
+    .nav:hover .nav-counter { color: rgba(255,255,255,.6); }
+    .keyboard-hint { position: fixed; top: 22px; right: 24px; font-size: 11px; color: rgba(255,255,255,.18); z-index: 200; }
+
+    /* ─── ENTRY ANIMATIONS — tight stagger, a1 at 0s matches slide opacity delay ─── */
+    @keyframes fade-up { from{opacity:0;transform:translateY(12px)} to{opacity:1;transform:translateY(0)} }
+    .slide.active .a1{animation:fade-up .36s 0.04s both}
+    .slide.active .a2{animation:fade-up .36s 0.08s both}
+    .slide.active .a3{animation:fade-up .36s 0.12s both}
+    .slide.active .a4{animation:fade-up .36s 0.16s both}
+    .slide.active .a5{animation:fade-up .36s 0.20s both}
+    .slide.active .a6{animation:fade-up .36s 0.24s both}
+    .slide.active .a7{animation:fade-up .36s 0.28s both}
+    .slide.active .a8{animation:fade-up .36s 0.32s both}
+
+    /* ─── SHARED ─── */
+    .section-label {
+      font-size: 10.5px; font-weight: 700; letter-spacing: 2.5px;
+      text-transform: uppercase; color: var(--primary); margin-bottom: 8px;
+    }
+    .slide-title { font-size: clamp(22px,3.2vw,40px); font-weight: 700; line-height: 1.14; margin-bottom: 12px; }
+    .slide-sub   { font-size: 14px; color: var(--text-muted); line-height: 1.7; max-width: 600px; }
+
+    /* ════════════════════ SLIDE 1 — HERO ════════════════════ */
+    .hero-grid {
+      position: absolute; inset: 0; pointer-events: none;
+      background-image:
+        linear-gradient(rgba(179,73,255,.04) 1px,transparent 1px),
+        linear-gradient(90deg,rgba(179,73,255,.04) 1px,transparent 1px);
+      background-size: 56px 56px;
+    }
+    .hero-orb {
+      position: absolute; width: 600px; height: 600px; border-radius: 50%;
+      background: radial-gradient(circle,rgba(179,73,255,.14) 0%,transparent 68%);
+      top:50%; left:50%; transform:translate(-50%,-50%);
+      animation: orb 4s ease-in-out infinite; pointer-events: none;
+    }
+    @keyframes orb { 0%,100%{transform:translate(-50%,-50%) scale(1);opacity:.6} 50%{transform:translate(-50%,-50%) scale(1.1);opacity:1} }
+    .hero-content { text-align: center; max-width: 820px; position: relative; z-index: 2; }
+    .hero-eyebrow {
+      display: inline-flex; align-items: center; gap: 7px;
+      background: rgba(179,73,255,.1); border: 1px solid rgba(179,73,255,.3);
+      padding: 4px 15px; border-radius: 100px; font-size: 10.5px; font-weight: 700;
+      letter-spacing: 2px; text-transform: uppercase; color: var(--primary-light); margin-bottom: 24px;
+    }
+    .hero-title { font-size: clamp(34px,5vw,62px); font-weight: 700; line-height: 1.08; margin-bottom: 18px; }
+    .hero-title em { color: var(--primary); font-style: normal; }
+    .hero-sub { font-size: 16px; color: rgba(255,255,255,.42); line-height: 1.75; max-width: 520px; margin: 0 auto; }
+
+    /* ════════════════════ SLIDE 2 — STATS ════════════════════ */
+    .stats-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; margin-top: 28px; max-width: 840px; width: 100%; }
+    .stat-card {
+      background: var(--white); border: 1px solid var(--border); border-radius: 18px;
+      padding: 24px 24px 20px; position: relative; overflow: hidden; transition: transform .3s, box-shadow .3s;
+    }
+    .stat-card:hover { transform: translateY(-4px); box-shadow: 0 14px 32px rgba(0,0,0,.08); }
+    .stat-card::before { content:''; position:absolute; top:0; left:0; right:0; height:3px; }
+    .stat-card.c-red::before { background: var(--red); }
+    .stat-card.c-yel::before { background: var(--yellow); }
+    .stat-card.c-pur::before { background: var(--primary); }
+    .stat-card.c-grn::before { background: var(--green); }
+    .stat-n { font-size: 48px; font-weight: 700; line-height: 1; margin-bottom: 5px; }
+    .stat-n.red{color:var(--red)} .stat-n.yel{color:var(--yellow)} .stat-n.pur{color:var(--primary)} .stat-n.grn{color:var(--green)}
+    .stat-txt { font-size: 13px; color: var(--text-muted); line-height: 1.5; }
+    .stat-txt strong { color: var(--text-dark); }
+
+    /* ════════════════════ SLIDE 3 — METHODS ════════════════════ */
+    .methods-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; margin-top: 26px; max-width: 840px; width: 100%; }
+    .method-card { background: var(--white); border: 1px solid var(--border); border-radius: 18px; padding: 22px; }
+    .method-icon { width: 46px; height: 46px; border-radius: 13px; display: flex; align-items: center; justify-content: center; font-size: 22px; margin-bottom: 12px; }
+    .method-title { font-size: 16px; font-weight: 700; margin-bottom: 10px; }
+    .method-prob { font-size: 12.5px; color: var(--text-muted); line-height: 1.6; padding: 11px 13px; background: rgba(239,68,68,.05); border: 1px solid rgba(239,68,68,.15); border-radius: 9px; }
+    .verdict { grid-column: 1/-1; background: rgba(239,68,68,.05); border: 1.5px solid rgba(239,68,68,.2); border-radius: 13px; padding: 16px 22px; font-size: 14px; font-weight: 600; color: #c0392b; text-align: center; }
+
+    /* ════════════════════ SLIDE 4 — WHAT IS IT ════════════════════ */
+    .simple-flow { display: flex; align-items: center; gap: 0; margin-top: 38px; width: 100%; justify-content: center; max-width: 900px; }
+    .sf-node { display: flex; flex-direction: column; align-items: center; gap: 9px; flex: 1; max-width: 140px; }
+    .sf-icon { width: 64px; height: 64px; border-radius: 18px; display: flex; align-items: center; justify-content: center; font-size: 28px; background: var(--white); border: 1.5px solid var(--border); box-shadow: 0 4px 12px rgba(0,0,0,.06); transition: all .3s; }
+    .sf-node:hover .sf-icon { border-color: var(--primary); box-shadow: 0 0 0 4px rgba(179,73,255,.1); transform: translateY(-4px); }
+    .sf-lbl { font-size: 12.5px; font-weight: 600; color: var(--text-dark); text-align: center; }
+    .sf-sub { font-size: 11px; color: var(--text-muted); text-align: center; }
+    .sf-arrow { flex: .2; color: var(--primary); font-size: 20px; opacity: .4; text-align: center; }
+    .tagline { margin-top: 36px; font-size: 16px; font-weight: 600; background: linear-gradient(135deg,rgba(179,73,255,.07),rgba(179,73,255,.02)); border: 1px solid rgba(179,73,255,.2); padding: 12px 28px; border-radius: 100px; }
+
+    /* ════════════════════ SLIDE 5 — TIMELINE ════════════════════ */
+    .tl-track { display: flex; align-items: flex-start; position: relative; padding-bottom: 4px; max-width: 920px; width: 100%; }
+    .tl-track::before { content:''; position:absolute; top:26px; left:28px; right:28px; height:2px; background: var(--border); }
+    .tl-step { flex: 1; display: flex; flex-direction: column; align-items: center; gap: 9px; opacity: .25; transition: all .4s ease; position: relative; }
+    .tl-step.active { opacity: 1; }
+    .tl-step.active .tl-circle { background: var(--primary); border-color: var(--primary); box-shadow: 0 0 16px rgba(179,73,255,.45); color: #fff; }
+    .tl-circle { width: 50px; height: 50px; border-radius: 50%; background: var(--white); border: 2px solid var(--border); display: flex; align-items: center; justify-content: center; font-size: 20px; transition: all .4s; position: relative; z-index: 2; }
+    .tl-body { background: var(--white); border: 1px solid var(--border); border-radius: 13px; padding: 13px; text-align: center; width: 100%; transition: all .3s; }
+    .tl-step.active .tl-body { border-color: rgba(179,73,255,.3); box-shadow: 0 4px 16px rgba(179,73,255,.1); }
+    .tl-time { font-size: 9.5px; font-weight: 700; letter-spacing: 1.5px; text-transform: uppercase; color: var(--primary); margin-bottom: 3px; }
+    .tl-title { font-size: 12.5px; font-weight: 700; color: var(--text-dark); margin-bottom: 4px; }
+    .tl-desc { font-size: 11px; color: var(--text-muted); line-height: 1.5; }
+    .tl-btn { margin-top: 18px; padding: 10px 24px; background: var(--primary); color: #fff; border: none; border-radius: 100px; font-family: 'Space Grotesk', sans-serif; font-size: 13px; font-weight: 600; cursor: pointer; transition: all .2s; }
+    .tl-btn:hover { background: var(--primary-dark); transform: translateY(-2px); box-shadow: 0 8px 20px rgba(179,73,255,.35); }
+    .tl-btn:disabled { background: #ccc; transform: none; box-shadow: none; cursor: default; }
+
+    /* ════════════════════ SLIDE 6 — WA MOCK ════════════════════ */
+    .wa-layout {
+      display: grid; grid-template-columns: 240px 1fr; gap: 36px;
+      align-items: center; max-width: 900px; width: 100%;
+    }
+    .phone-wrap { width: 220px; flex-shrink: 0; }
+    .phone-frame { background: #1a1a1a; border-radius: 34px; padding: 11px; box-shadow: 0 32px 64px rgba(0,0,0,.35), 0 0 0 1px rgba(255,255,255,.06); }
+    .phone-screen { background: #0b141a; border-radius: 25px; overflow: hidden; }
+    .wa-hdr { background: #1f2c34; padding: 10px 13px; display: flex; align-items: center; gap: 9px; }
+    .wa-av { width: 32px; height: 32px; border-radius: 50%; flex-shrink: 0; background: linear-gradient(135deg, var(--primary), var(--primary-dark)); display: flex; align-items: center; justify-content: center; font-size: 14px; }
+    .wa-nm { font-size: 12px; font-weight: 600; color: #e9edef; }
+    .wa-st { font-size: 10px; color: #8696a0; }
+    .wa-msgs { padding: 9px; display: flex; flex-direction: column; gap: 4px; min-height: 310px; background: #0b141a; }
+    .wa-msg { max-width: 90%; padding: 7px 9px; border-radius: 7px; font-size: 11px; line-height: 1.45; opacity: 0; transform: translateY(5px); }
+    .wa-msg.in  { background: #202c33; color: #e9edef; align-self: flex-start; border-radius: 0 7px 7px 7px; }
+    .wa-msg.out { background: #005c4b; color: #e9edef; align-self: flex-end; border-radius: 7px 7px 0 7px; }
+    .wa-msg.show { animation: wa-pop .25s ease forwards; }
+    @keyframes wa-pop { to{opacity:1;transform:translateY(0)} }
+    .wa-meta { font-size: 9px; color: #8696a0; text-align: right; margin-top: 2px; }
+    .wa-btns { display: flex; flex-direction: column; gap: 1px; align-self: flex-start; max-width: 90%; margin-top: 2px; }
+    .wa-btn-row { background: #202c33; color: #53bdeb; font-size: 11px; font-weight: 600; padding: 6px 9px; text-align: center; border-radius: 4px; opacity: 0; }
+    .wa-btn-row.show { animation: wa-pop .25s ease forwards; }
+
+    .wa-feats { display: flex; flex-direction: column; gap: 11px; min-width: 0; }
+    .wa-feat { display: flex; align-items: flex-start; gap: 12px; background: var(--white); border: 1px solid var(--border); border-radius: 13px; padding: 14px; transition: all .3s; }
+    .wa-feat:hover { border-color: rgba(179,73,255,.3); box-shadow: 0 4px 12px rgba(179,73,255,.08); }
+    .wa-feat-ic { width: 34px; height: 34px; border-radius: 10px; display: flex; align-items: center; justify-content: center; font-size: 16px; flex-shrink: 0; background: rgba(179,73,255,.1); }
+    .wa-feat-txt h4 { font-size: 12.5px; font-weight: 700; margin-bottom: 2px; }
+    .wa-feat-txt p  { font-size: 11.5px; color: var(--text-muted); line-height: 1.5; }
+
+    /* ════════════════════ SLIDE 7 — REPROGRAMMING OPTIONS ════════════════════ */
+    .reprog-wrap { max-width: 940px; width: 100%; }
+    .reprog-grid { display: grid; grid-template-columns: repeat(3,1fr); gap: 14px; margin-top: 24px; }
+    .reprog-card {
+      border-radius: 18px; border: 1.5px solid var(--border); background: var(--white);
+      padding: 20px 18px; position: relative; transition: all .3s;
+    }
+    .reprog-card:hover { transform: translateY(-4px); box-shadow: 0 12px 28px rgba(0,0,0,.09); }
+    .reprog-card.rec { border-color: var(--primary); background: linear-gradient(160deg,rgba(179,73,255,.04),#fff); box-shadow: 0 6px 24px rgba(179,73,255,.13); }
+    .reprog-badge { position: absolute; top: -11px; left: 50%; transform: translateX(-50%); background: var(--primary); color: #fff; font-size: 9.5px; font-weight: 700; letter-spacing: .8px; padding: 3px 14px; border-radius: 100px; white-space: nowrap; }
+    .reprog-letter { width: 36px; height: 36px; border-radius: 10px; background: rgba(179,73,255,.1); color: var(--primary); font-size: 16px; font-weight: 700; display: flex; align-items: center; justify-content: center; margin-bottom: 12px; }
+    .reprog-card.rec .reprog-letter { background: var(--primary); color: #fff; }
+    .reprog-title { font-size: 14px; font-weight: 700; margin-bottom: 10px; }
+    .reprog-steps { display: flex; flex-direction: column; gap: 5px; margin-bottom: 12px; }
+    .reprog-step { font-size: 11.5px; color: var(--text-muted); display: flex; align-items: flex-start; gap: 6px; line-height: 1.5; }
+    .rs-arrow { color: var(--primary); font-size: 10px; margin-top: 2px; flex-shrink: 0; }
+    .reprog-cost {
+      font-size: 12px; font-weight: 700; text-align: center; padding: 8px;
+      border-radius: 9px; margin-top: auto;
+    }
+    .reprog-cost.inc { background: rgba(34,197,94,.1); color: #15803d; }
+    .reprog-cost.paid { background: rgba(179,73,255,.1); color: var(--primary-dark); }
+
+    /* ════════════════════ SLIDE 8 — CALENDAR ════════════════════ */
+    .cal-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 18px; margin-top: 28px; max-width: 840px; width: 100%; }
+    .cal-panel { background: var(--white); border: 1px solid var(--border); border-radius: 18px; padding: 20px; }
+    .cal-panel.after { border-color: rgba(34,197,94,.35); box-shadow: 0 4px 20px rgba(34,197,94,.07); }
+    .cal-tag { display: inline-block; font-size: 10px; font-weight: 700; letter-spacing: .8px; text-transform: uppercase; padding: 3px 11px; border-radius: 100px; margin-bottom: 13px; }
+    .cal-tag.b { background: rgba(239,68,68,.1); color: var(--red); }
+    .cal-tag.a { background: rgba(34,197,94,.1); color: #15803d; }
+    .cal-evt { display: flex; align-items: center; gap: 9px; padding: 8px 10px; border-radius: 8px; font-size: 12.5px; font-weight: 500; margin-bottom: 5px; }
+    .cal-evt.n { background: rgba(107,114,128,.08); color: var(--text-muted); }
+    .cal-evt.g { background: rgba(34,197,94,.08); color: #15803d; }
+    .cal-evt.r { background: rgba(239,68,68,.08); color: #991b1b; text-decoration: line-through; opacity: .7; }
+    .cal-evt.y { background: rgba(245,158,11,.08); color: #92400e; }
+    .cal-note { margin-top: 12px; font-size: 12px; font-style: italic; }
+
+    /* ════════════════════ SLIDE 9 — THREE NEEDS ════════════════════ */
+    .needs-grid { display: grid; grid-template-columns: repeat(3,1fr); gap: 18px; margin-top: 30px; max-width: 840px; width: 100%; }
+    .need-card { background: var(--white); border: 1px solid var(--border); border-radius: 20px; padding: 26px 20px; text-align: center; transition: all .3s; }
+    .need-card:hover { border-color: var(--primary); box-shadow: 0 8px 26px rgba(179,73,255,.12); transform: translateY(-5px); }
+    .need-num { width: 28px; height: 28px; border-radius: 50%; background: var(--primary); color: #fff; font-size: 12px; font-weight: 700; display: flex; align-items: center; justify-content: center; margin: 0 auto 12px; }
+    .need-em { font-size: 36px; display: block; margin-bottom: 12px; }
+    .need-title { font-size: 15px; font-weight: 700; margin-bottom: 7px; }
+    .need-desc { font-size: 12.5px; color: var(--text-muted); line-height: 1.6; }
+
+    /* ════════════════════ SLIDE 10 — SIM ════════════════════ */
+    .sim-layout { display: grid; grid-template-columns: 1fr 1fr; gap: 40px; align-items: center; max-width: 880px; width: 100%; }
+    .sim-options { display: flex; flex-direction: column; gap: 12px; }
+    .sim-opt { background: var(--white); border: 1.5px solid var(--border); border-radius: 16px; padding: 18px; transition: all .3s; }
+    .sim-opt:hover { border-color: var(--primary); box-shadow: 0 4px 14px rgba(179,73,255,.1); }
+    .sim-opt-hdr { display: flex; align-items: center; gap: 10px; margin-bottom: 8px; }
+    .sim-badge { font-size: 10px; font-weight: 700; padding: 2px 10px; border-radius: 100px; letter-spacing: .5px; }
+    .sim-badge.opt1 { background: rgba(34,197,94,.1); color: #15803d; }
+    .sim-badge.opt2 { background: rgba(179,73,255,.1); color: var(--primary-dark); }
+    .sim-opt h4 { font-size: 13.5px; font-weight: 700; }
+    .sim-opt p  { font-size: 12px; color: var(--text-muted); line-height: 1.55; }
+    .sim-rules { display: flex; flex-direction: column; gap: 12px; }
+    .sim-rule { display: flex; gap: 10px; align-items: flex-start; }
+    .sim-dot { width: 6px; height: 6px; border-radius: 50%; background: var(--primary); margin-top: 6px; flex-shrink: 0; }
+    .sim-rule h4 { font-size: 13px; font-weight: 700; margin-bottom: 2px; }
+    .sim-rule p  { font-size: 12px; color: var(--text-muted); line-height: 1.55; }
+    .warn-box { margin-top: 14px; padding: 12px 16px; background: rgba(245,158,11,.07); border: 1px solid rgba(245,158,11,.25); border-radius: 10px; font-size: 12px; color: #92400e; line-height: 1.6; }
+
+    /* ════════════════════ SLIDE 11 — WA TIERS ════════════════════ */
+    .tiers-grid { display: grid; grid-template-columns: repeat(3,1fr); gap: 14px; margin-top: 28px; max-width: 840px; width: 100%; }
+    .tier { border-radius: 18px; padding: 22px; text-align: center; border: 1.5px solid var(--border); background: var(--white); position: relative; transition: all .3s; }
+    .tier.hl { border-color: var(--primary); background: linear-gradient(160deg,rgba(179,73,255,.04),#fff); box-shadow: 0 8px 26px rgba(179,73,255,.14); transform: scale(1.04); }
+    .tier-badge { position: absolute; top: -11px; left: 50%; transform: translateX(-50%); background: var(--primary); color: #fff; font-size: 10px; font-weight: 700; letter-spacing: .8px; padding: 3px 13px; border-radius: 100px; white-space: nowrap; }
+    .tier-ico { font-size: 32px; margin-bottom: 9px; }
+    .tier-name { font-size: 13.5px; font-weight: 700; margin-bottom: 11px; }
+    .tier-feats { list-style: none; display: flex; flex-direction: column; gap: 6px; }
+    .tier-feats li { font-size: 11.5px; color: var(--text-muted); display: flex; align-items: center; gap: 5px; }
+    .tier-feats li.y { color: var(--text-dark); }
+    .tier-feats li.n { text-decoration: line-through; opacity: .5; }
+
+    /* ════════════════════ SLIDE 12 — META ROLES ════════════════════ */
+    .meta-layout { display: grid; grid-template-columns: 1fr 1fr; gap: 48px; align-items: center; max-width: 900px; width: 100%; }
+    .meta-hier { display: flex; flex-direction: column; align-items: center; }
+    .meta-box { background: var(--white); border: 1.5px solid var(--border); border-radius: 15px; padding: 16px 26px; text-align: center; min-width: 250px; transition: all .3s; }
+    .meta-box:hover { border-color: var(--primary); box-shadow: 0 4px 16px rgba(179,73,255,.12); }
+    .meta-box h4 { font-size: 14px; font-weight: 700; margin-bottom: 3px; }
+    .meta-box p  { font-size: 11.5px; color: var(--text-muted); }
+    .meta-role { font-size: 9.5px; font-weight: 700; letter-spacing: 1.5px; text-transform: uppercase; color: var(--primary); margin-bottom: 4px; }
+    .meta-conn { width: 2px; height: 26px; background: linear-gradient(to bottom,var(--border),var(--primary)); position: relative; }
+    .meta-conn::after { content:'▼'; position:absolute; bottom:-8px; left:50%; transform:translateX(-50%); color:var(--primary); font-size:8px; }
+    .meta-conn-lbl { font-size: 9.5px; color: var(--primary); font-weight: 600; letter-spacing: .5px; }
+    .own-note { padding: 14px 18px; background: rgba(34,197,94,.06); border: 1px solid rgba(34,197,94,.2); border-radius: 11px; font-size: 13px; font-weight: 600; color: #15803d; display: flex; align-items: center; gap: 10px; margin-top: 0; }
+    .meta-pts { display: flex; flex-direction: column; gap: 11px; }
+    .meta-pt { display: flex; gap: 10px; align-items: flex-start; padding: 13px; background: var(--white); border: 1px solid var(--border); border-radius: 12px; }
+    .meta-pt-ic { font-size: 20px; flex-shrink: 0; }
+    .meta-pt h4 { font-size: 12.5px; font-weight: 700; margin-bottom: 2px; }
+    .meta-pt p  { font-size: 11.5px; color: var(--text-muted); line-height: 1.5; }
+
+    /* ════════════════════ SLIDE 13 — META GOTCHAS ════════════════════ */
+    .gotcha-wrap { max-width: 920px; width: 100%; }
+    .gotcha-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin-top: 24px; }
+    .gotcha-card { border-radius: 14px; padding: 16px 18px; border: 1px solid var(--border); background: var(--white); display: flex; gap: 12px; align-items: flex-start; }
+    .gotcha-card.warn { border-color: rgba(245,158,11,.3); background: rgba(245,158,11,.04); }
+    .gotcha-card.good { border-color: rgba(34,197,94,.3); background: rgba(34,197,94,.04); }
+    .gotcha-ic { font-size: 22px; flex-shrink: 0; margin-top: 1px; }
+    .gotcha-card h4 { font-size: 12.5px; font-weight: 700; margin-bottom: 3px; }
+    .gotcha-card p  { font-size: 11.5px; color: var(--text-muted); line-height: 1.55; }
+    .gotcha-note { grid-column: 1/-1; background: rgba(179,73,255,.05); border: 1.5px solid rgba(179,73,255,.2); border-radius: 12px; padding: 14px 18px; font-size: 13px; font-weight: 600; color: var(--primary-dark); display: flex; align-items: center; gap: 10px; }
+
+    /* ════════════════════ SLIDE 14 — ONLY CHANGE ════════════════════ */
+    .routine-wrap { display: flex; flex-direction: column; align-items: center; gap: 22px; max-width: 640px; width: 100%; }
+    .cal-demo { background: var(--white); border: 1px solid var(--border); border-radius: 18px; padding: 24px; width: 100%; box-shadow: 0 4px 18px rgba(0,0,0,.06); }
+    .cal-demo-hdr { font-size: 12px; font-weight: 600; color: var(--text-muted); margin-bottom: 16px; }
+    .cal-field { display: flex; align-items: flex-start; gap: 11px; margin-bottom: 10px; }
+    .field-lbl { font-size: 11.5px; font-weight: 600; color: var(--text-muted); min-width: 84px; padding-top: 2px; }
+    .field-val { font-size: 13.5px; color: var(--text-dark); flex: 1; }
+    .field-hl { background: rgba(179,73,255,.06); border: 1.5px solid rgba(179,73,255,.3); border-radius: 7px; padding: 6px 11px; font-size: 15px; font-weight: 700; color: var(--primary); font-family: monospace; }
+    .routine-note { font-size: 17px; font-weight: 600; text-align: center; }
+    .routine-note em { color: var(--primary); font-style: normal; }
+
+    /* ════════════════════ SLIDE 15 — VERIFICATION ════════════════════ */
+    .verif-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; margin-top: 26px; max-width: 860px; width: 100%; }
+    .verif-card { border-radius: 18px; padding: 22px; border: 1.5px solid var(--border); background: var(--white); }
+    .verif-card.gr { border-color: rgba(34,197,94,.4); }
+    .verif-status { display: inline-flex; align-items: center; gap: 5px; font-size: 11px; font-weight: 700; padding: 3px 12px; border-radius: 100px; margin-bottom: 13px; }
+    .verif-status.y { background: rgba(245,158,11,.1); color: #92400e; }
+    .verif-status.g { background: rgba(34,197,94,.1); color: #15803d; }
+    .verif-row { display: flex; justify-content: space-between; align-items: flex-start; padding: 8px 0; border-bottom: 1px solid var(--border); gap: 12px; }
+    .verif-row:last-child { border-bottom: none; }
+    .verif-row .vl { font-size: 12px; color: var(--text-muted); flex-shrink: 0; }
+    .verif-row .vv { font-size: 12px; font-weight: 600; text-align: right; }
+    .plan-note { grid-column: 1/-1; background: rgba(34,197,94,.05); border: 1.5px solid rgba(34,197,94,.2); border-radius: 13px; padding: 16px 20px; font-size: 13.5px; font-weight: 600; color: #15803d; display: flex; align-items: center; gap: 10px; }
+
+    /* ════════════════════ SLIDE 16 — PLAN ════════════════════ */
+    .plan-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-top: 24px; max-width: 860px; width: 100%; }
+    .plan-item { display: flex; align-items: flex-start; gap: 10px; padding: 12px 14px; background: var(--white); border: 1px solid var(--border); border-radius: 11px; transition: all .2s; }
+    .plan-item:hover { border-color: rgba(179,73,255,.3); box-shadow: 0 2px 10px rgba(179,73,255,.07); }
+    .plan-chk { width: 20px; height: 20px; border-radius: 50%; background: rgba(34,197,94,.1); color: var(--green); font-size: 10px; display: flex; align-items: center; justify-content: center; flex-shrink: 0; }
+    .plan-item h4 { font-size: 12px; font-weight: 700; margin-bottom: 1px; }
+    .plan-item p  { font-size: 11px; color: var(--text-muted); line-height: 1.5; }
+
+    /* ════════════════════ SLIDE 17 — PRICING ════════════════════ */
+    .price-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 24px; margin-top: 24px; max-width: 840px; width: 100%; align-items: start; }
+    .price-card { border-radius: 22px; padding: 26px; border: 1.5px solid var(--border); background: var(--white); position: relative; }
+    .price-card.fd { border-color: var(--primary); background: linear-gradient(160deg,rgba(179,73,255,.04),#fff); box-shadow: 0 8px 32px rgba(179,73,255,.16); }
+    .price-badge { position: absolute; top: -12px; left: 50%; transform: translateX(-50%); background: linear-gradient(135deg,var(--primary),var(--primary-dark)); color: #fff; font-size: 10px; font-weight: 700; letter-spacing: .8px; padding: 4px 15px; border-radius: 100px; white-space: nowrap; box-shadow: 0 4px 12px rgba(179,73,255,.3); }
+    .price-per { font-size: 11.5px; font-weight: 600; color: var(--text-muted); margin-bottom: 10px; }
+    .price-amt { margin-bottom: 16px; }
+    .price-amt .big { font-size: 38px; font-weight: 700; line-height: 1; }
+    .price-amt .big.pur { color: var(--primary); }
+    .price-amt .cross { font-size: 15px; text-decoration: line-through; color: var(--text-muted); margin-right: 5px; }
+    .price-amt .mo { font-size: 13px; color: var(--text-muted); font-weight: 400; }
+    .price-rows { display: flex; flex-direction: column; }
+    .price-row { display: flex; justify-content: space-between; align-items: center; padding: 10px 0; border-bottom: 1px solid var(--border); font-size: 12.5px; }
+    .price-row:last-child { border-bottom: none; }
+    .price-row .rl { color: var(--text-muted); }
+    .price-row .rv { font-weight: 600; }
+    .savings-box { background: rgba(179,73,255,.07); border: 1px solid rgba(179,73,255,.2); border-radius: 11px; padding: 13px 16px; text-align: center; margin-top: 16px; }
+    .savings-n { font-size: 20px; font-weight: 700; color: var(--primary); }
+    .savings-l { font-size: 11px; color: var(--text-muted); }
+
+    /* ════════════════════ SLIDE 18 — ROI ════════════════════ */
+    .roi-layout { display: grid; grid-template-columns: 1fr 1fr; gap: 40px; align-items: center; max-width: 860px; width: 100%; }
+    .roi-rows { display: flex; flex-direction: column; gap: 9px; }
+    .roi-r { display: flex; justify-content: space-between; align-items: center; padding: 13px 16px; border-radius: 10px; font-size: 13px; }
+    .roi-r.nt { background: var(--white); border: 1px solid var(--border); }
+    .roi-r.bd { background: rgba(239,68,68,.05); border: 1px solid rgba(239,68,68,.15); }
+    .roi-r.gd { background: rgba(34,197,94,.05); border: 1px solid rgba(34,197,94,.15); }
+    .roi-r.pu { background: rgba(179,73,255,.05); border: 1.5px solid rgba(179,73,255,.25); }
+    .roi-lbl { color: var(--text-muted); }
+    .roi-val { font-size: 17px; font-weight: 700; }
+    .roi-vis { display: flex; flex-direction: column; align-items: center; gap: 14px; }
+    .roi-cta { font-size: 19px; font-weight: 700; text-align: center; line-height: 1.45; }
+    .roi-cta em { color: var(--primary); font-style: normal; }
+
+    /* ════════════════════ SLIDE 19 — CLOSING ════════════════════ */
+    .close-content { text-align: center; max-width: 660px; position: relative; z-index: 2; }
+    .close-title { font-size: clamp(24px,3.5vw,42px); font-weight: 700; line-height: 1.18; color: #fff; margin-bottom: 16px; }
+    .close-title em { color: var(--primary); font-style: normal; }
+    .close-sub { font-size: 14px; color: rgba(255,255,255,.42); margin-bottom: 30px; line-height: 1.75; }
+    .steps-row { display: flex; gap: 7px; justify-content: center; margin-bottom: 28px; flex-wrap: wrap; }
+    .step-pill { background: rgba(255,255,255,.06); border: 1px solid rgba(255,255,255,.1); border-radius: 11px; padding: 11px 16px; text-align: center; }
+    .step-pill.hl { background: rgba(179,73,255,.15); border-color: var(--primary); }
+    .sp-wk { font-size: 9px; font-weight: 700; letter-spacing: 1px; color: var(--primary); text-transform: uppercase; margin-bottom: 3px; }
+    .sp-name { font-size: 12px; color: rgba(255,255,255,.8); font-weight: 600; }
+    .arr-sep { color: rgba(255,255,255,.2); display: flex; align-items: center; font-size: 16px; }
+    .cta-btn { display: inline-block; padding: 14px 36px; background: var(--primary); color: #fff; border-radius: 100px; font-size: 14px; font-weight: 700; text-decoration: none; transition: all .3s; box-shadow: 0 0 32px rgba(179,73,255,.45); }
+    .cta-btn:hover { transform: translateY(-3px); box-shadow: 0 0 52px rgba(179,73,255,.65); }
+    .close-tagline { margin-top: 26px; font-size: 12.5px; color: rgba(255,255,255,.22); font-style: italic; line-height: 1.7; }
+  </style>
+</head>
+<body>
+
+<div class="progress-bar" id="progressBar"></div>
+<div class="logo on-dark" id="siteLogo">
+  <svg xmlns="http://www.w3.org/2000/svg" width="122" height="27" viewBox="0 0 145.5194 32.1629" style="display:block">
+    <path d="M49.2653,5.13c-.5267.0007-.9623.1813-1.307.542-.3447.362-.517.7974-.517,1.306,0,.526.1723.9656.517,1.319.3445.3532.7802.5298,1.3065.53.5424-.0001.9819-.1768,1.3185-.53.3367-.3527.505-.7923.505-1.319,0-.5087-.1683-.944-.505-1.306-.3367-.3613-.776-.542-1.318-.542Z" fill="currentColor"/>
+    <path d="M42.5555,13.3824c.4871-.2789.9005-.6072,1.2258-.9944.6-.7147.9-1.5653.9-2.552-.0007-.804-.198-1.5473-.592-2.23-.3947-.68-.982-1.23-1.762-1.65-.7806-.4194-1.746-.629-2.896-.629h-4.534v.001h-2.465v17.324l3.328.001v-.001h3.77c1.2327.0007,2.28-.225,3.142-.677.8627-.452,1.52-1.052,1.972-1.8.4514-.7474.677-1.5811.677-2.501,0-1.1666-.349-2.1647-1.047-2.994-.4481-.5325-1.03-.9579-1.7189-1.2977ZM40.7014,8.581c.4186.3453.628.8713.628,1.5779,0,.689.001,1.0341-.628,1.552-.4194.3453-.974.518-1.664.518h-3.277v-4.165h3.277c.6893,0,1.244.1724,1.664.517ZM41.2924,19.178c-.452.4933-1.0803.74-1.885.74h-3.647v-4.979h3.647c.542,0,1.006.111,1.392.333.3729.2087.6769.5214.875.9.1974.3781.296.7967.296,1.256.0098.6492-.2333,1.2769-.678,1.75Z" fill="currentColor"/>
+    <rect x="47.6374" y="10.749" width="3.253" height="11.903" fill="currentColor"/>
+    <polygon points="49.2653 8.827 49.2649 8.8269 49.2644 8.827 49.2653 8.827" fill="currentColor"/>
+    <path d="M62.7694,11.156c-.69-.4353-1.4703-.653-2.341-.653-.904,0-1.354.001-2.427.5909-.3882.2139-.7261.4766-1.022.7801v-1.1251h-3.23v11.903h3.23v-6.8346c.0007-.4729.1024-.8894.307-1.2484.1981-.3543.4929-.645.85-.838.3613-.1973.772-.296,1.232-.296.7067,0,1.282.222,1.726.666.4433.4434.665,1.0184.665,1.725v6.826h3.228v-7.541c0-.8047-.197-1.5563-.591-2.255-.3912-.6942-.9507-1.2787-1.627-1.7Z" fill="currentColor"/>
+    <path d="M128.4293,13.602c-.2802,0-.5256.0241-.7513.062l3.3343-4.665h-3.03l-3.787,5.477c-.8287,1.2167-1.243,2.4274-1.243,3.632-.0097.8442.2157,1.6746.651,2.398.4291.7149,1.0384,1.3046,1.767,1.71.7446.42,1.583.63,2.515.63.9194.0007,1.7543-.213,2.505-.641.7343-.4128,1.3498-1.0079,1.787-1.728.4413-.7323.6699-1.5731.66-2.428,0-.8673-.2007-1.6343-.602-2.301-.7913-1.3469-2.2441-2.166-3.806-2.146ZM129.9254,19.283c-.4011.7502-1.1895,1.2117-2.04,1.194-.4533,0-.858-.107-1.214-.321-.356-.213-.634-.504-.835-.873s-.302-.553-.301-1.253c.0007-.466.101-.8803.301-1.243.1969-.3569.485-.6551.835-.864.3672-.2172.7875-.328,1.214-.32.4222-.0092.8387.0981,1.204.31.3503.2088.6389.507.836.864.206.369.31.555.31,1.253,0,.4653-.1033.883-.31,1.253Z" fill="currentColor"/>
+    <path d="M144.7614,12.117c-.5047-1.0553-1.1873-1.8743-2.048-2.457-.862-.5827-1.8363-.874-2.923-.874-1.0281-.0103-2.0346.2948-2.884.874-.8613.582-1.5443,1.3973-2.049,2.446-.505,1.05-.758,1.574-.758,3.69,0,1.4113.256,2.648.768,3.71.5106,1.062,1.2,1.8843,2.068,2.467.8597.5805,1.8761.885,2.9135.8729,1.0234.011,2.0259-.2903,2.8735-.8639.8553-.5754,1.535-1.3911,2.039-2.447.5053-1.0547.758-2.288.758-3.7-.0007-1.4233-.2534-2.6627-.758-3.718ZM142.4794,18.38c-.2527.686-.6057,1.2037-1.059,1.553-.4526.3493-.99.524-1.612.524-.6213,0-1.1586-.1747-1.612-.524-.4533-.3487-.806-.8663-1.058-1.553-.2527-.686-.379-1.547-.379-2.5829-.0007-1.0227.1257-1.874.379-2.554.252-.68.6047-1.1913,1.058-1.534.4534-.3433.9844-.515,1.593-.515.6207,0,1.161.1717,1.621.515.4594.3433.8157.8577,1.069,1.543.252.687.378,1.028.378,2.564.0007,1.0233-.1253,1.878-.378,2.564Z" fill="currentColor"/>
+    <path d="M119.8354,14.777c-.5038-.2955-1.0657-.4512-1.6791-.4821l3.3011-3.7809v-1.514h-8.623v2.291h4.9567l-2.8597,3.321v1.515l.0017-.0009-.0007.0009c.18-.064.4-.1127.66-.146.2511-.0319.5039-.048.757-.048.5566,0,1.0356.0906,1.437.272.4009.181.603.273.923.777.2133.336.32.7437.32,1.223,0,.454,0,.681-.32,1.195-.214.3427-.5087.608-.884.796-.3753.188-.822.282-1.34.282-.556,0-1.074-.1166-1.554-.35-.478-.2327-.847-.5437-1.107-.933l-1.747,1.729c.5184.6215,1.1772,1.1106,1.922,1.427.7634.33,1.605.495,2.525.495l-.001.001c1.0359-.0007,1.9393-.1917,2.71-.573.77-.382,1.157-.572,1.797-1.592.4267-.68.64-1.4733.64-2.38,0-.816,0-1.224-.495-2.127-.3307-.602-.7773-1.068-1.34-1.398Z" fill="currentColor"/>
+    <polygon points="86.3443 18.2884 83.4464 10.749 79.8974 10.749 85.1474 22.652 87.4633 22.652 92.6884 10.749 89.2624 10.749 86.3443 18.2884" fill="currentColor"/>
+    <path d="M102.2504,11.8953c-.3328-.3548-.7209-.6553-1.1591-.8753-.674-.3447-1.4376-.517-2.291-.517-1.0853,0-2.063.271-2.933.813-.8693.5408-1.576,1.3069-2.045,2.217-.4933.9373-.74,1.9973-.74,3.18-.0007,1.1667.2457,2.218.739,3.154.4687.9109,1.1758,1.6774,2.046,2.218.87.542,1.8474.813,2.932.813v.001c.854,0,1.618-.1767,2.292-.53.4367-.2245.8248-.5266,1.1591-.8814v1.1654l3.203-.002v-11.903h-3.203v1.1473ZM101.5844,19.018c-.5587.6-1.2897.9-2.193.9-.5914,0-1.113-.1357-1.565-.407-.452-.2714-.8054-.6494-1.06-1.134-.2547-.4847-.382-1.047-.382-1.687,0-.6246.1273-1.1793.382-1.664.2394-.4703.6068-.8634,1.06-1.134.452-.2707.9733-.406,1.564-.406.608.0007,1.138.136,1.59.406.4531.2706.8206.6636,1.06,1.134.2546.4847.382,1.039.382,1.663,0,.9526-.2794,1.729-.838,2.329Z" fill="currentColor"/>
+    <path d="M76.4353,11.304c-.962-.5507-2.0507-.826-3.266-.826-1.1833,0-2.2593.275-3.228.825-.9443.5268-1.7345,1.2914-2.292,2.218-.558.929-.838,1.392-.838,3.142,0,1.1674.2833,2.223.85,3.167.5559.9343,1.3459,1.7074,2.292,2.243.9607.55,2.041.825,3.241.825v.001c1.2-.0007,2.28-.276,3.24-.826.9445-.5334,1.7311-1.3073,2.28-2.243.558-.944.838-1.417.838-3.167,0-1.166-.279-2.2133-.837-3.142-.56-.9273-1.32-1.6663-2.28-2.217ZM75.8684,18.352c-.2449.4743-.6217.8677-1.085,1.133-.468.2713-1.006.407-1.614.407-.5913-.0007-1.117-.1364-1.577-.407-.46-.2707-.8214-.6484-1.084-1.133-.263-.484-.395-.728-.395-1.664.0007-.6247.1323-1.175.395-1.651.2626-.476.624-.8497,1.084-1.121.46-.2713.9857-.407,1.577-.407.608,0,1.142.1357,1.6021.407.4568.2677.8318.6554,1.084,1.121.263.477.395.715.395,1.651,0,.624-.1273,1.1786-.382,1.664Z" fill="currentColor"/>
+    <!-- B icon — always purple -->
+    <path d="M18.9309,11.9488h-.0025l.3925-.3925.9855-.9872c2.4161-2.4185,2.4161-6.3371,0-8.7556-2.4176-2.4178-6.3374-2.418-8.7552-.0004-.0001.0001-.0003.0003-.0004.0004l-5.7065,5.7057L.9757,12.3876l-.0067.0076c-1.2897,1.2865-1.2923,3.3749-.0058,4.6647.0019.002.0039.0039.0058.0058l.0758.0758c1.2891,1.2873,3.3772,1.2873,4.6663,0l4.8718-4.871,5.3283-5.3292c.5736-.5717,1.5021-.5702,2.0738.0035.2733.2742.4271.6454.4278,1.0325,0,.3706-.1432.7446-.4304,1.0318l-10.1437,10.1471-.064.0598c-.0219.0185-.0432.0387-.064.0606l-4.7581,4.7581c-.0225.0219-.0427.0432-.0606.064-.0225.0202-.0438.0415-.064.064v.0042l-.0034.0034v.0042l-.3858.3849v.0084c-.3479.3883-.5896.8381-.7294,1.3182-.3414,1.181-.0124,2.4542.8583,3.322,1.3189,1.3185,3.4569,1.3185,4.7758,0l4.7589-4.7581,5.7891-5.7899c.5569-.5582,1.4608-.5593,2.0191-.0024.0008.0008.0016.0016.0024.0024l.0463.0455c.5594.559.5597,1.4656.0007,2.025l-.0007.0007-5.8624,5.8624-.3925.3925-.0025.0025.3959-.3959-2.8571,2.8537-.0051.0051-.3883.3875-.0303.0337c-.5187.5364-.5044,1.3916.032,1.9103.5364.5187,1.3916.5044,1.9103-.032l.3723-.3715.0211-.0168,2.8571-2.8571.0168-.0211,6.0864-6.0864c1.1628-1.1587,1.8155-2.7333,1.8135-4.3749.0027-1.6424-.6501-3.218-1.8135-4.3774-.8672-.8711-1.9757-1.4623-3.1822-1.6972M23.9274,18.0217v.0042-.0042Z" fill="#8e05c2"/>
+  </svg>
+</div>
+<div class="keyboard-hint">← → para navegar</div>
+
+<div class="presentation">
+
+  <!-- ══ SLIDE 1 — HERO ══ -->
+  <div class="slide slide-dark active" data-slide="1">
+    <div class="hero-grid"></div>
+    <div class="hero-orb"></div>
+    <div class="hero-content">
+      <div class="hero-eyebrow a1">● Sistema de Recordación Automática de Citas</div>
+      <h1 class="hero-title a2">Su consultorio nunca más<br>pierde una cita por <em>olvido</em></h1>
+      <p class="hero-sub a3">Un sistema que trabaja 24 horas al día, 7 días a la semana,<br>para que cada paciente recuerde llegar a su cita.</p>
+    </div>
+  </div>
+
+  <!-- ══ SLIDE 2 — PROBLEM STATS ══ -->
+  <div class="slide slide-light" data-slide="2">
+    <div style="max-width:840px;width:100%">
+      <p class="section-label a1">El problema</p>
+      <h2 class="slide-title a2">¿Cuánto le está costando cada cita perdida?</h2>
+      <p class="slide-sub a3">Cuando un paciente no llega sin avisar, ese espacio queda vacío para siempre. No se recupera.</p>
+      <div class="stats-grid">
+        <div class="stat-card c-red a4"><div class="stat-n red">400</div><div class="stat-txt"><strong>citas por mes</strong> en su consultorio</div></div>
+        <div class="stat-card c-yel a4"><div class="stat-n yel">10–20%</div><div class="stat-txt"><strong>de los pacientes</strong> no asiste sin avisar</div></div>
+        <div class="stat-card c-pur a5"><div class="stat-n pur">40–80</div><div class="stat-txt"><strong>citas perdidas cada mes</strong> — tiempo y dinero que no se recuperan</div></div>
+        <div class="stat-card c-grn a5"><div class="stat-n grn">52</div><div class="stat-txt"><strong>citas que podrían recuperarse</strong> con recordatorios automáticos</div></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ══ SLIDE 3 — CURRENT METHODS ══ -->
+  <div class="slide slide-light" data-slide="3">
+    <div style="max-width:840px;width:100%">
+      <p class="section-label a1">El problema</p>
+      <h2 class="slide-title a2">Cómo se confirman citas hoy</h2>
+      <p class="slide-sub a3">Los dos métodos más comunes. Ninguno es ideal.</p>
+      <div class="methods-grid">
+        <div class="method-card a4"><div class="method-icon" style="background:rgba(239,68,68,.1)">📞</div><div class="method-title">Llamar paciente por paciente</div><div class="method-prob">⏱️ Consume 30 a 40 min al día. Muchos no contestan. Hay que volver a intentar.</div></div>
+        <div class="method-card a4"><div class="method-icon" style="background:rgba(34,197,94,.1)">💬</div><div class="method-title">Mensajes manuales por WhatsApp</div><div class="method-prob">✏️ Sigue siendo trabajo manual. Depende de que alguien lo recuerde hacer todos los días.</div></div>
+        <div class="verdict a5">⚠️ Ambas opciones dependen de que alguien recuerde hacerlo. Si hay mucho trabajo ese día, no se hace.</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ══ SLIDE 4 — WHAT IS IT ══ -->
+  <div class="slide slide-white" data-slide="4">
+    <div style="display:flex;flex-direction:column;align-items:center;max-width:900px;width:100%;text-align:center">
+      <p class="section-label a1">La solución</p>
+      <h2 class="slide-title a2">Un asistente que trabaja 24/7 sin que usted haga nada</h2>
+      <p class="slide-sub a3">Ustedes siguen agendando exactamente igual. El sistema detecta la cita y hace el resto.</p>
+      <div class="simple-flow a4">
+        <div class="sf-node"><div class="sf-icon">📅</div><div class="sf-lbl">Agenda la cita</div><div class="sf-sub">En Google Calendar</div></div>
+        <div class="sf-arrow">→</div>
+        <div class="sf-node"><div class="sf-icon">🤖</div><div class="sf-lbl">El sistema lo detecta</div><div class="sf-sub">Automáticamente</div></div>
+        <div class="sf-arrow">→</div>
+        <div class="sf-node"><div class="sf-icon">📱</div><div class="sf-lbl">Le escribe al paciente</div><div class="sf-sub">Por WhatsApp</div></div>
+        <div class="sf-arrow">→</div>
+        <div class="sf-node"><div class="sf-icon">🔔</div><div class="sf-lbl">Ustedes reciben la respuesta</div><div class="sf-sub">Al instante</div></div>
+      </div>
+      <div class="tagline a5">Sin apps nuevas · Sin cambiar su rutina · Sin hacer nada extra</div>
+    </div>
+  </div>
+
+  <!-- ══ SLIDE 5 — TIMELINE ══ -->
+  <div class="slide slide-light" data-slide="5">
+    <div style="max-width:920px;width:100%">
+      <p class="section-label a1">La solución</p>
+      <h2 class="slide-title a2">Así funciona, paso a paso</h2>
+      <div class="a3">
+        <div class="tl-track" id="tlTrack">
+          <div class="tl-step active" data-s="0"><div class="tl-circle">📅</div><div class="tl-body"><div class="tl-time">Cuando se agenda</div><div class="tl-title">Cita registrada</div><div class="tl-desc">Crean la cita en Google Calendar. El sistema la detecta en segundos.</div></div></div>
+          <div class="tl-step" data-s="1"><div class="tl-circle">📱</div><div class="tl-body"><div class="tl-time">24 horas antes</div><div class="tl-title">Recordatorio con botones</div><div class="tl-desc">El paciente recibe un WhatsApp con su nombre, fecha y hora. Confirma en un toque.</div></div></div>
+          <div class="tl-step" data-s="2"><div class="tl-circle">💬</div><div class="tl-body"><div class="tl-time">Al instante</div><div class="tl-title">Ustedes reciben la respuesta</div><div class="tl-desc">Confirmó ✅, canceló ❌ o quiere reprogramar 🔄. Notificación inmediata.</div></div></div>
+          <div class="tl-step" data-s="3"><div class="tl-circle">⏰</div><div class="tl-body"><div class="tl-time">1 hora antes</div><div class="tl-title">Recordatorio final</div><div class="tl-desc">Un segundo aviso corto con la dirección. El que más reduce ausencias de último momento.</div></div></div>
+        </div>
+        <div style="text-align:center;margin-top:16px">
+          <button class="tl-btn" id="tlBtn" onclick="advTimeline()">Ver siguiente paso →</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ══ SLIDE 6 — WA MOCK ══ -->
+  <div class="slide slide-light" data-slide="6">
+    <div style="max-width:900px;width:100%;display:flex;flex-direction:column;gap:18px">
+      <!-- Header — full width -->
+      <div class="a1">
+        <p class="section-label" style="margin-bottom:6px">La solución</p>
+        <h2 class="slide-title" style="margin-bottom:6px">Así se ve el mensaje que recibe el paciente</h2>
+        <p style="font-size:13px;color:var(--text-muted);line-height:1.55">Un mensaje profesional y claro. El paciente responde tocando un botón — no tiene que escribir nada.</p>
+      </div>
+      <!-- Body — phone + features side by side -->
+      <div class="a2" style="display:grid;grid-template-columns:210px 1fr;gap:28px;align-items:start">
+        <!-- Phone -->
+        <div style="width:210px;flex-shrink:0">
+          <div class="phone-frame">
+            <div class="phone-screen">
+              <div class="wa-hdr">
+                <div class="wa-av">🏥</div>
+                <div><div class="wa-nm">Recordatorios Fisioterapia</div><div class="wa-st">En línea</div></div>
+              </div>
+              <div id="waMsgs" style="padding:9px;display:flex;flex-direction:column;gap:4px;max-height:260px;overflow-y:scroll;scrollbar-width:none;background:#0b141a;"></div>
+            </div>
+          </div>
+        </div>
+        <!-- Features — original vertical list style -->
+        <div style="display:flex;flex-direction:column;gap:11px">
+          <div class="wa-feat"><div class="wa-feat-ic">✅</div><div class="wa-feat-txt"><h4>Confirma → Calendario se actualiza solo</h4><p>El evento en Google Calendar queda marcado como confirmado. Sin que ustedes toquen nada.</p></div></div>
+          <div class="wa-feat"><div class="wa-feat-ic">❌</div><div class="wa-feat-txt"><h4>Cancela → Alerta inmediata a ustedes</h4><p>El slot queda libre y reciben notificación con el nombre del paciente y la fecha.</p></div></div>
+          <div class="wa-feat"><div class="wa-feat-ic">🔄</div><div class="wa-feat-txt"><h4>Reprogramar → El bot captura la preferencia</h4><p>Le pregunta al paciente cuándo puede. Ustedes reciben la solicitud con la información lista.</p></div></div>
+          <div class="wa-feat"><div class="wa-feat-ic">🔔</div><div class="wa-feat-txt"><h4>Todo llega a su WhatsApp de siempre</h4><p>Sin revisar apps nuevas. Las notificaciones llegan a su número del consultorio.</p></div></div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ══ SLIDE 7 — 3 REPROGRAMMING OPTIONS ══ -->
+  <div class="slide slide-white" data-slide="7">
+    <div class="reprog-wrap">
+      <p class="section-label a1">La solución</p>
+      <h2 class="slide-title a2">¿Qué pasa cuando el paciente quiere reprogramar?</h2>
+      <p class="slide-sub a3" style="max-width:700px">Hay tres formas de manejar esto. Las presentamos para que elijan la que mejor se adapta a su consultorio.</p>
+      <div class="reprog-grid">
+        <!-- OPTION A -->
+        <div class="reprog-card a4">
+          <div class="reprog-letter">A</div>
+          <div class="reprog-title">Solo notifica a la recepción</div>
+          <div class="reprog-steps">
+            <div class="reprog-step"><span class="rs-arrow">▸</span>El paciente toca <strong>Reprogramar</strong></div>
+            <div class="reprog-step"><span class="rs-arrow">▸</span>La recepción recibe: <em>"Juan García quiere reprogramar su cita del martes 3pm"</em></div>
+            <div class="reprog-step"><span class="rs-arrow">▸</span>La recepción lo contacta y coordina el nuevo horario manualmente</div>
+          </div>
+          <div class="reprog-cost inc">✓ Incluido en el plan base</div>
+        </div>
+        <!-- OPTION B -->
+        <div class="reprog-card rec a4">
+          <div class="reprog-badge">★ Recomendado</div>
+          <div class="reprog-letter">B</div>
+          <div class="reprog-title">El bot captura la preferencia</div>
+          <div class="reprog-steps">
+            <div class="reprog-step"><span class="rs-arrow">▸</span>El paciente toca <strong>Reprogramar</strong></div>
+            <div class="reprog-step"><span class="rs-arrow">▸</span>El bot responde: <em>"¿Qué día y hora le queda mejor?"</em></div>
+            <div class="reprog-step"><span class="rs-arrow">▸</span>La recepción recibe la solicitud <strong>ya con la preferencia del paciente</strong>. Solo confirma y agenda.</div>
+          </div>
+          <div class="reprog-cost inc">✓ Incluido en el plan base</div>
+        </div>
+        <!-- OPTION C -->
+        <div class="reprog-card a5">
+          <div class="reprog-letter">C</div>
+          <div class="reprog-title">Reprogramación 100% automática</div>
+          <div class="reprog-steps">
+            <div class="reprog-step"><span class="rs-arrow">▸</span>El paciente toca <strong>Reprogramar</strong></div>
+            <div class="reprog-step"><span class="rs-arrow">▸</span>El bot consulta el calendario en tiempo real y le ofrece 2 o 3 horarios con botones</div>
+            <div class="reprog-step"><span class="rs-arrow">▸</span>El paciente elige → el calendario se actualiza solo. <strong>Cero intervención humana.</strong></div>
+          </div>
+          <div class="reprog-cost paid">$380.000 implementación + $80.000/mes adicional</div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ══ SLIDE 8 — CALENDAR ══ -->
+  <div class="slide slide-white" data-slide="8">
+    <div style="max-width:840px;width:100%">
+      <p class="section-label a1">La solución</p>
+      <h2 class="slide-title a2">Su calendario siempre refleja la realidad</h2>
+      <p class="slide-sub a3">Sin que ustedes lo actualicen. El sistema lo hace automáticamente cuando el paciente responde.</p>
+      <div class="cal-grid">
+        <div class="cal-panel a4">
+          <div class="cal-tag b">Sin el sistema</div>
+          <div class="cal-evt n">📅 &nbsp;9:00am — María González</div>
+          <div class="cal-evt n">📅 &nbsp;10:30am — Juan García</div>
+          <div class="cal-evt n">📅 &nbsp;2:00pm — Carlos Ruiz</div>
+          <div class="cal-evt n">📅 &nbsp;3:30pm — Ana López</div>
+          <div class="cal-note" style="color:var(--text-muted)">¿Quién viene? No se sabe hasta que llegue la hora.</div>
+        </div>
+        <div class="cal-panel after a4">
+          <div class="cal-tag a">Con el sistema</div>
+          <div class="cal-evt g">✅ &nbsp;9:00am — María González</div>
+          <div class="cal-evt r">❌ &nbsp;10:30am — Juan García</div>
+          <div class="cal-evt g">✅ &nbsp;2:00pm — Carlos Ruiz</div>
+          <div class="cal-evt y">🔄 &nbsp;3:30pm — Ana López</div>
+          <div class="cal-note" style="color:#15803d">El día organizado desde la noche anterior. Sin sorpresas.</div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ══ SLIDE 9 — THREE NEEDS ══ -->
+  <div class="slide slide-light" data-slide="9">
+    <div style="max-width:840px;width:100%;text-align:center">
+      <p class="section-label a1">Para implementarlo</p>
+      <h2 class="slide-title a2">¿Qué se necesita para que funcione?</h2>
+      <p class="slide-sub a3" style="margin:0 auto 0">Solo tres cosas. Las explicamos con total claridad.</p>
+      <div class="needs-grid">
+        <div class="need-card a4"><div class="need-num">1</div><span class="need-em">📅</span><div class="need-title">Su Google Calendar</div><div class="need-desc">El que ya tienen. No hay que cambiar nada. El sistema se conecta a su calendario actual.</div></div>
+        <div class="need-card a4"><div class="need-num">2</div><span class="need-em">📱</span><div class="need-title">Un número de WhatsApp dedicado</div><div class="need-desc">Un número nuevo exclusivo para el sistema. Su número personal no se toca.</div></div>
+        <div class="need-card a5"><div class="need-num">3</div><span class="need-em">🏢</span><div class="need-title">Una cuenta empresarial en Meta</div><div class="need-desc">Meta es la empresa dueña de WhatsApp. Necesitan saber quién envía los mensajes. Es un registro gratuito.</div></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ══ SLIDE 10 — SIM OPTIONS ══ -->
+  <div class="slide slide-white" data-slide="10">
+    <div class="sim-layout">
+      <div class="a1">
+        <p class="section-label">Para implementarlo</p>
+        <h2 class="slide-title" style="font-size:clamp(20px,2.6vw,32px)">El número dedicado: dos opciones</h2>
+        <p style="font-size:13px;color:var(--text-muted);margin-bottom:16px;line-height:1.6">El sistema necesita un número de WhatsApp exclusivo para enviar los recordatorios. Así pueden tenerlo.</p>
+        <div class="sim-options">
+          <div class="sim-opt">
+            <div class="sim-opt-hdr">
+              <span style="font-size:20px">📲</span>
+              <div><div class="sim-badge opt1">OPCIÓN 1 — USTEDES LO TRAMITAN</div><h4>SIM prepago a nombre de la clínica</h4></div>
+            </div>
+            <p>Compran un chip prepago en cualquier operador (Claro, Tigo, WOM) con la cédula del representante legal. Nos lo entregan y nosotros lo configuramos. El número queda a nombre de la clínica desde el inicio.</p>
+          </div>
+          <div class="sim-opt" style="border-color:rgba(179,73,255,.3);background:rgba(179,73,255,.03)">
+            <div class="sim-opt-hdr">
+              <span style="font-size:20px">⚙️</span>
+              <div><div class="sim-badge opt2">OPCIÓN 2 — NOSOTROS LO GESTIONAMOS</div><h4>Binova 360° adquiere y mantiene la SIM</h4></div>
+            </div>
+            <p>Nosotros compramos el chip prepago, lo configuramos y lo mantenemos activo. No necesitan hacer nada. <strong>Si en algún momento terminan el contrato, les transferimos el número — el chip pasa a nombre de la clínica sin costo adicional.</strong></p>
+          </div>
+        </div>
+      </div>
+      <div class="sim-rules a2">
+        <div class="sim-rule"><div class="sim-dot"></div><div><h4>El número NO puede estar en WhatsApp actualmente</h4><p>Si la SIM ya tiene WhatsApp activo, hay que eliminarlo primero. Una vez migrado a la API, no puede usarse en WhatsApp normal.</p></div></div>
+        <div class="sim-rule"><div class="sim-dot"></div><div><h4>Los mensajes salen del número del sistema</h4><p>Los pacientes ven "Recordatorios Fisioterapia". Su número personal sigue igual.</p></div></div>
+        <div class="sim-rule"><div class="sim-dot"></div><div><h4>Las respuestas les llegan a ustedes</h4><p>Cuando el paciente responde, la notificación llega al WhatsApp del consultorio al instante.</p></div></div>
+        <div class="warn-box">💡 <strong>Recomendación:</strong> SIM pospago a nombre del NIT del consultorio. Aporta credibilidad ante Meta y cuesta lo mismo que un plan básico.</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ══ SLIDE 11 — WA TIERS ══ -->
+  <div class="slide slide-light" data-slide="12">
+    <div style="max-width:840px;width:100%">
+      <p class="section-label a1">Para implementarlo</p>
+      <h2 class="slide-title a2">WhatsApp tiene versiones. Esta usa la versión para empresas.</h2>
+      <p class="slide-sub a3">No todas las versiones permiten mensajes automáticos con botones interactivos.</p>
+      <div class="tiers-grid">
+        <div class="tier a4"><div class="tier-ico">💚</div><div class="tier-name">WhatsApp Normal</div><ul class="tier-feats"><li class="y"><span style="color:var(--green)">✓</span> Para conversaciones personales</li><li class="n"><span style="color:var(--red)">✗</span> No se puede automatizar</li><li class="n"><span style="color:var(--red)">✗</span> Sin botones interactivos</li></ul></div>
+        <div class="tier a4"><div class="tier-ico">🔵</div><div class="tier-name">WhatsApp Business</div><ul class="tier-feats"><li class="y"><span style="color:var(--green)">✓</span> Para negocios pequeños</li><li class="y"><span style="color:var(--green)">✓</span> Respuestas rápidas básicas</li><li class="n"><span style="color:var(--red)">✗</span> Automatización muy limitada</li></ul></div>
+        <div class="tier hl a5"><div class="tier-badge">✦ La que usa el sistema</div><div class="tier-ico">⚡</div><div class="tier-name">WhatsApp Business API</div><ul class="tier-feats"><li class="y"><span style="color:var(--green)">✓</span> Para sistemas automáticos</li><li class="y"><span style="color:var(--green)">✓</span> Botones interactivos</li><li class="y"><span style="color:var(--green)">✓</span> Miles de mensajes al mes</li><li class="y"><span style="color:var(--green)">✓</span> La misma que usan los bancos</li></ul></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ══ SLIDE 12 — META ROLES ══ -->
+  <div class="slide slide-white" data-slide="13">
+    <div class="meta-layout">
+      <div class="a1">
+        <p class="section-label">Para implementarlo</p>
+        <h2 class="slide-title" style="font-size:clamp(20px,2.4vw,30px)">¿Quién es dueño de qué?</h2>
+        <p style="font-size:13px;color:var(--text-muted);margin-bottom:20px;line-height:1.6">Total transparencia. Ustedes son dueños de todo en todo momento.</p>
+        <div class="meta-hier">
+          <div class="meta-box" style="border-color:rgba(179,73,255,.3);background:rgba(179,73,255,.03)">
+            <div class="meta-role">Dueño de WhatsApp</div>
+            <h4>🏢 Meta (Facebook)</h4>
+            <p>Aprueba que el consultorio pueda enviar mensajes automáticos</p>
+          </div>
+          <div class="meta-conn" style="position:relative">
+            <span style="position:absolute;left:14px;top:8px;font-size:9.5px;color:var(--primary);font-weight:600;white-space:nowrap">le da permiso a</span>
+          </div>
+          <div class="meta-box" style="border-color:rgba(34,197,94,.4);background:rgba(34,197,94,.03)">
+            <div class="meta-role" style="color:var(--green)">Dueños del número y la cuenta</div>
+            <h4>🏥 Consultorio de Fisioterapia</h4>
+            <p>Propietarios del número, la cuenta y todos los datos</p>
+          </div>
+          <div class="meta-conn" style="position:relative">
+            <span style="position:absolute;left:14px;top:8px;font-size:9.5px;color:var(--primary);font-weight:600;white-space:nowrap">nos da acceso técnico</span>
+          </div>
+          <div class="meta-box">
+            <div class="meta-role">Operador técnico</div>
+            <h4>⚙️ Binova 360°</h4>
+            <p>Configura y mantiene el sistema. Acceso técnico, no propiedad.</p>
+          </div>
+        </div>
+      </div>
+      <div class="meta-pts a2">
+        <div class="meta-pt"><span class="meta-pt-ic">🔒</span><div><h4>Si en algún momento nos cambian...</h4><p>El número, la cuenta de Meta y todos los datos siguen siendo del consultorio. No pierden nada.</p></div></div>
+        <div class="meta-pt"><span class="meta-pt-ic">🧾</span><div><h4>¿Qué hace el consultorio? (una sola vez)</h4><p>Crear la cuenta en Meta Business Manager y darnos acceso técnico. Les acompañamos paso a paso.</p></div></div>
+        <div class="meta-pt"><span class="meta-pt-ic">⚙️</span><div><h4>¿Qué hace Binova 360°?</h4><p>Configura todo el sistema: WhatsApp, Calendar, automatizaciones. Mantenimiento y monitoreo 24/7.</p></div></div>
+        <div class="own-note"><span>✅</span><div>Sus datos, su número, su cuenta. Siempre.</div></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ══ SLIDE 13 — GOTCHAS PART 1 ══ -->
+  <div class="slide slide-light" data-slide="14">
+    <div style="max-width:860px;width:100%">
+      <p class="section-label a1">Para implementarlo</p>
+      <h2 class="slide-title a2">Lo que hay que tener listo — parte 1</h2>
+      <p class="slide-sub a3" style="max-width:680px">Basado en la experiencia de muchas empresas. Si esto está listo, la implementación no tiene tropiezos.</p>
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-top:22px">
+        <div class="gotcha-card warn a4"><span class="gotcha-ic">🌐</span><div><h4>Sitio web activo y profesional</h4><p>Meta lo revisa para aprobar la cuenta. Si está incompleto o no existe, puede rechazarse la verificación. Binova 360° tiene este componente cubierto.</p></div></div>
+        <div class="gotcha-card warn a4"><span class="gotcha-ic">📧</span><div><h4>Correo empresarial (no Gmail)</h4><p>Meta exige un correo con el dominio del consultorio. <strong>Ej: admin@clinicaejemplo.com</strong> — no un correo de Gmail o Hotmail.</p></div></div>
+        <div class="gotcha-card warn a5"><span class="gotcha-ic">📄</span><div><h4>Los nombres deben coincidir exactamente</h4><p>El nombre en Meta Business Manager debe ser <strong>idéntico</strong> al del RUT o Cámara de Comercio. Una diferencia mínima puede causar rechazo.</p></div></div>
+        <div class="gotcha-card good a5"><span class="gotcha-ic">⏱️</span><div><h4>Los mensajes necesitan aprobación previa</h4><p>Los textos de los recordatorios los revisa Meta antes de enviarse (24–48h). Se diseñan una sola vez al inicio. Cada cambio requiere nueva aprobación.</p></div></div>
+        <div class="gotcha-note a6" style="grid-column:1/-1"><span style="font-size:20px">👉</span><div>Siguiente: los otros dos puntos técnicos que también conviene conocer.</div></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ══ SLIDE 14 — GOTCHAS PART 2 ══ -->
+  <div class="slide slide-light" data-slide="15">
+    <div style="max-width:860px;width:100%">
+      <p class="section-label a1">Para implementarlo</p>
+      <h2 class="slide-title a2">Lo que hay que tener listo — parte 2</h2>
+      <p class="slide-sub a3" style="max-width:680px">Dos puntos técnicos más. Ninguno requiere acción de su parte — solo es bueno saberlos.</p>
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-top:22px">
+        <div class="gotcha-card good a4"><span class="gotcha-ic">📈</span><div><h4>Límite de mensajes al arrancar</h4><p>WhatsApp limita los mensajes a 250 pacientes distintos por día al inicio. Para su consultorio son ~13 mensajes diarios. <strong>Nunca van a llegar a ese límite.</strong> Al verificar el negocio, el límite sube automáticamente a 2.000.</p></div></div>
+        <div class="gotcha-card good a4"><span class="gotcha-ic">🔐</span><div><h4>Autenticación en dos pasos (2FA)</h4><p>Meta lo exige desde 2024 para todas las cuentas empresariales. Es una capa de seguridad — como un código adicional al entrar. Se configura una sola vez con una app en el celular. Lo hacemos juntos.</p></div></div>
+        <div class="gotcha-note a5" style="grid-column:1/-1"><span style="font-size:20px">💡</span><div><strong>Binova los acompaña en todo esto.</strong> No van solos. Cada uno de estos pasos tiene su guía y lo hacemos juntos durante la primera semana de implementación.</div></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ══ SLIDE 15 — LEGAL / DATOS PACIENTES ══ -->
+  <div class="slide slide-white" data-slide="16">
+    <div style="max-width:900px;width:100%">
+      <p class="section-label a1">Para implementarlo</p>
+      <h2 class="slide-title a2">Los datos de sus pacientes tienen protección legal</h2>
+      <p class="slide-sub a3" style="max-width:720px">En Colombia, la Ley 1581 de 2012 exige que cualquier negocio que guarde y use información de personas cumpla ciertas obligaciones. Esto aplica directamente al sistema.</p>
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-top:22px">
+        <div class="gotcha-card warn a4"><span class="gotcha-ic">📋</span><div><h4>Política de privacidad de la clínica</h4><p>Debe existir un documento que diga qué datos recopilan, para qué los usan, y que un sistema automático les envía mensajes a los pacientes. Puede ser una hoja en recepción o una página web.</p></div></div>
+        <div class="gotcha-card warn a4"><span class="gotcha-ic">✋</span><div><h4>El paciente debe saber y aceptar</h4><p>Cuando le piden el número de WhatsApp al paciente, deben decirle que le llegará un recordatorio automático por ese medio. Puede ser una frase en la ficha de inscripción.</p></div></div>
+        <div class="gotcha-card warn a5"><span class="gotcha-ic">📧</span><div><h4>Canal para solicitudes de datos</h4><p>La ley exige que un paciente pueda pedir que eliminen o corrijan sus datos. Basta con tener un correo designado para eso. Ej: <em>datos@clinica.com</em></p></div></div>
+        <div class="gotcha-card good a5"><span class="gotcha-ic">🌎</span><div><h4>Los datos se guardan en un servidor en Brasil</h4><p>La base de datos del sistema está en São Paulo — el servidor más cercano disponible. Esto debe mencionarse en su política de privacidad. Brasil tiene leyes de protección de datos similares a las colombianas.</p></div></div>
+        <div class="gotcha-note a6" style="grid-column:1/-1"><span style="font-size:20px">🤝</span><div><strong>Binova 360° firma un acuerdo de confidencialidad</strong> con la clínica antes de iniciar. Los datos de los pacientes solo se usan para enviar recordatorios — nada más, nunca.</div></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ══ SLIDE 16 — SCOPE ══ -->
+  <div class="slide slide-light" data-slide="17">
+    <div style="max-width:900px;width:100%">
+      <p class="section-label a1">Claridad total</p>
+      <h2 class="slide-title a2">Qué hace el sistema — y qué NO hace</h2>
+      <p class="slide-sub a3">Para que no haya sorpresas. El sistema es muy bueno en lo que hace, pero no lo hace todo.</p>
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:18px;margin-top:24px">
+        <div style="background:var(--white);border:1.5px solid rgba(34,197,94,.3);border-radius:18px;padding:22px">
+          <div style="font-size:11px;font-weight:700;letter-spacing:1.5px;text-transform:uppercase;color:#15803d;margin-bottom:14px">✅ Sí hace</div>
+          <div style="display:flex;flex-direction:column;gap:9px">
+            <div style="display:flex;gap:9px;align-items:flex-start;font-size:12.5px"><span style="color:var(--green);font-size:14px;margin-top:1px">✓</span><span>Detectar citas nuevas en Google Calendar automáticamente</span></div>
+            <div style="display:flex;gap:9px;align-items:flex-start;font-size:12.5px"><span style="color:var(--green);font-size:14px;margin-top:1px">✓</span><span>Enviar recordatorio 24 horas antes con botones de respuesta</span></div>
+            <div style="display:flex;gap:9px;align-items:flex-start;font-size:12.5px"><span style="color:var(--green);font-size:14px;margin-top:1px">✓</span><span>Enviar recordatorio 1 hora antes</span></div>
+            <div style="display:flex;gap:9px;align-items:flex-start;font-size:12.5px"><span style="color:var(--green);font-size:14px;margin-top:1px">✓</span><span>Registrar la respuesta del paciente (confirma / cancela / reprogramar)</span></div>
+            <div style="display:flex;gap:9px;align-items:flex-start;font-size:12.5px"><span style="color:var(--green);font-size:14px;margin-top:1px">✓</span><span>Actualizar Google Calendar automáticamente</span></div>
+            <div style="display:flex;gap:9px;align-items:flex-start;font-size:12.5px"><span style="color:var(--green);font-size:14px;margin-top:1px">✓</span><span>Notificar a la recepción cuando hay cancelaciones o solicitudes</span></div>
+          </div>
+        </div>
+        <div style="background:var(--white);border:1.5px solid rgba(239,68,68,.2);border-radius:18px;padding:22px">
+          <div style="font-size:11px;font-weight:700;letter-spacing:1.5px;text-transform:uppercase;color:#991b1b;margin-bottom:14px">❌ No hace</div>
+          <div style="display:flex;flex-direction:column;gap:9px">
+            <div style="display:flex;gap:9px;align-items:flex-start;font-size:12.5px"><span style="color:var(--red);font-size:14px;margin-top:1px">✗</span><span>Agendar citas nuevas — eso sigue haciéndolo la recepción</span></div>
+            <div style="display:flex;gap:9px;align-items:flex-start;font-size:12.5px"><span style="color:var(--red);font-size:14px;margin-top:1px">✗</span><span>Reprogramar citas automáticamente (salvo Opción C adicional)</span></div>
+            <div style="display:flex;gap:9px;align-items:flex-start;font-size:12.5px"><span style="color:var(--red);font-size:14px;margin-top:1px">✗</span><span>Responder preguntas generales de los pacientes</span></div>
+            <div style="display:flex;gap:9px;align-items:flex-start;font-size:12.5px"><span style="color:var(--red);font-size:14px;margin-top:1px">✗</span><span>Garantizar que el paciente lea o responda el mensaje</span></div>
+            <div style="display:flex;gap:9px;align-items:flex-start;font-size:12.5px"><span style="color:var(--red);font-size:14px;margin-top:1px">✗</span><span>Funcionar si el paciente no tiene WhatsApp activo en ese número</span></div>
+            <div style="display:flex;gap:9px;align-items:flex-start;font-size:12.5px"><span style="color:var(--red);font-size:14px;margin-top:1px">✗</span><span>Reemplazar la atención humana de la recepción</span></div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ══ SLIDE 17 — REALISTIC TIMELINE ══ -->
+  <div class="slide slide-white" data-slide="18">
+    <div style="max-width:840px;width:100%">
+      <p class="section-label a1">Tiempos reales</p>
+      <h2 class="slide-title a2">¿Cuánto tiempo toma tenerlo funcionando?</h2>
+      <p class="slide-sub a3">Queremos ser honestos desde el primer día. Los tiempos dependen en gran parte de Meta, no de nosotros.</p>
+      <div style="display:flex;flex-direction:column;gap:0;margin-top:24px;border-radius:14px;overflow:hidden;border:1px solid var(--border)">
+        <div style="display:grid;grid-template-columns:2fr 1fr 1fr;background:var(--primary);padding:10px 18px">
+          <span style="font-size:11px;font-weight:700;letter-spacing:1px;text-transform:uppercase;color:rgba(255,255,255,.7)">Actividad</span>
+          <span style="font-size:11px;font-weight:700;letter-spacing:1px;text-transform:uppercase;color:rgba(255,255,255,.7)">Tiempo</span>
+          <span style="font-size:11px;font-weight:700;letter-spacing:1px;text-transform:uppercase;color:rgba(255,255,255,.7)">¿Quién?</span>
+        </div>
+        <div style="display:grid;grid-template-columns:2fr 1fr 1fr;background:var(--white);padding:12px 18px;font-size:12.5px;border-top:1px solid var(--border)">
+          <span>Verificación del negocio en Meta</span><span style="font-weight:700;color:var(--yellow)">2–14 días hábiles</span><span style="color:var(--text-muted)">Meta lo decide</span>
+        </div>
+        <div style="display:grid;grid-template-columns:2fr 1fr 1fr;background:var(--bg-light);padding:12px 18px;font-size:12.5px;border-top:1px solid var(--border)">
+          <span>Aprobación de los mensajes por Meta</span><span style="font-weight:700;color:var(--yellow)">15 min – 48h</span><span style="color:var(--text-muted)">Meta lo decide</span>
+        </div>
+        <div style="display:grid;grid-template-columns:2fr 1fr 1fr;background:var(--white);padding:12px 18px;font-size:12.5px;border-top:1px solid var(--border)">
+          <span>Configuración técnica completa</span><span style="font-weight:700;color:var(--primary)">3–5 días</span><span style="color:var(--text-muted)">Binova 360°</span>
+        </div>
+        <div style="display:grid;grid-template-columns:2fr 1fr 1fr;background:var(--bg-light);padding:12px 18px;font-size:12.5px;border-top:1px solid var(--border)">
+          <span>Capacitación y pruebas reales</span><span style="font-weight:700;color:var(--primary)">1 semana</span><span style="color:var(--text-muted)">Juntos</span>
+        </div>
+        <div style="display:grid;grid-template-columns:2fr 1fr 1fr;background:rgba(179,73,255,.05);padding:13px 18px;font-size:13px;font-weight:700;border-top:2px solid var(--primary)">
+          <span>Total realista</span><span style="color:var(--primary)">4 – 6 semanas</span><span style="color:var(--text-muted);font-weight:400;font-size:11.5px">Si Meta no rechaza nada</span>
+        </div>
+      </div>
+      <div style="margin-top:14px;padding:12px 18px;background:rgba(245,158,11,.07);border:1px solid rgba(245,158,11,.25);border-radius:10px;font-size:12.5px;color:#92400e;line-height:1.6" class="a6">
+        ⚠️ <strong>Si Meta rechaza la verificación o los mensajes</strong>, los tiempos pueden extenderse 2–3 meses. Por eso es clave tener todos los documentos listos antes de iniciar.
+      </div>
+    </div>
+  </div>
+
+  <!-- ══ SLIDE 18 — RECURRING COSTS ══ -->
+  <div class="slide slide-light" data-slide="11">
+    <div style="max-width:860px;width:100%">
+      <p class="section-label a1">Costos adicionales</p>
+      <h2 class="slide-title a2">El único costo externo que asume la clínica</h2>
+      <p class="slide-sub a3" style="max-width:720px">El servidor y los mensajes de WhatsApp van por cuenta de Binova 360°. Lo único que necesitan adquirir es la SIM para el número dedicado — y el costo es mínimo.</p>
+
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:18px;margin-top:24px">
+        <!-- Left: what they need -->
+        <div style="background:var(--white);border:1.5px solid rgba(179,73,255,.25);border-radius:18px;padding:24px" class="a4">
+          <div style="font-size:11px;font-weight:700;letter-spacing:1.5px;text-transform:uppercase;color:var(--primary);margin-bottom:14px">📱 SIM dedicada — costo real</div>
+          <div style="display:flex;flex-direction:column;gap:10px">
+            <div style="padding:12px 14px;background:rgba(34,197,94,.06);border:1px solid rgba(34,197,94,.2);border-radius:10px">
+              <div style="font-size:12.5px;font-weight:700;color:#15803d;margin-bottom:3px">✅ Opción recomendada: SIM prepago</div>
+              <div style="font-size:12px;color:var(--text-muted);line-height:1.6">Cualquier operador (Claro, Tigo, WOM). La SIM solo necesita recibir un SMS de verificación <em>una sola vez</em>. Después, solo hay que mantener la línea activa con recargas mínimas ocasionales.</div>
+            </div>
+            <div style="display:flex;align-items:center;justify-content:space-between;padding:8px 0;border-bottom:1px solid var(--border)">
+              <span style="font-size:12.5px;color:var(--text-muted)">Chip SIM (compra única)</span>
+              <span style="font-size:13px;font-weight:700">Gratis o ~$1.000</span>
+            </div>
+            <div style="display:flex;align-items:center;justify-content:space-between;padding:8px 0;border-bottom:1px solid var(--border)">
+              <span style="font-size:12.5px;color:var(--text-muted)">Recarga mínima para mantener activa</span>
+              <span style="font-size:13px;font-weight:700;color:var(--primary)">$1.000–$2.000 cada 60 días</span>
+            </div>
+            <div style="display:flex;align-items:center;justify-content:space-between;padding:8px 0">
+              <span style="font-size:12.5px;font-weight:600">Costo anual total</span>
+              <span style="font-size:15px;font-weight:700;color:#15803d">~$6.000–$12.000/año</span>
+            </div>
+          </div>
+        </div>
+
+        <!-- Right: carrier comparison -->
+        <div style="background:var(--white);border:1px solid var(--border);border-radius:18px;padding:24px" class="a4">
+          <div style="font-size:11px;font-weight:700;letter-spacing:1.5px;text-transform:uppercase;color:var(--text-muted);margin-bottom:14px">⚠️ Qué pasa si no recargan a tiempo</div>
+          <div style="display:flex;flex-direction:column;gap:9px">
+            <div style="font-size:12.5px;color:var(--text-dark);line-height:1.6;padding:10px 12px;background:var(--bg-light);border-radius:9px">
+              <strong>Claro prepago:</strong> saldo vigente 60 días. Si vence, tienen 30 días adicionales para recuperarlo con $1.000.
+            </div>
+            <div style="font-size:12.5px;color:var(--text-dark);line-height:1.6;padding:10px 12px;background:var(--bg-light);border-radius:9px">
+              <strong>Movistar prepago:</strong> el saldo (plata) NO tiene fecha de vencimiento. Solo vencen los paquetes (datos/minutos).
+            </div>
+            <div style="font-size:12.5px;color:var(--text-dark);line-height:1.6;padding:10px 12px;background:var(--bg-light);border-radius:9px">
+              <strong>Tigo / WOM:</strong> vigencia por paquete. Sin actividad, la línea puede suspenderse en 60–90 días.
+            </div>
+            <div style="font-size:12px;color:#92400e;line-height:1.6;padding:10px 12px;background:rgba(245,158,11,.07);border:1px solid rgba(245,158,11,.25);border-radius:9px">
+              ⚠️ Si el operador cancela y recicla el número, el sistema pierde el número de WhatsApp y habría que registrarlo de nuevo ante Meta. <strong>Binova 360° monitorea esto y avisa con tiempo.</strong>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ══ SLIDE 19 — ONLY CHANGE ══ -->
+  <div class="slide slide-white" data-slide="19">
+    <div class="routine-wrap">
+      <p class="section-label a1">Para implementarlo</p>
+      <h2 class="slide-title a2" style="text-align:center">El único cambio en su rutina</h2>
+      <div class="cal-demo a3">
+        <div class="cal-demo-hdr">Cuando creen una cita en Google Calendar, agregan esto en la descripción del evento:</div>
+        <div class="cal-field"><div class="field-lbl">Título:</div><div class="field-val">María González — Valoración</div></div>
+        <div class="cal-field"><div class="field-lbl">Fecha:</div><div class="field-val">Lunes 14 de abril, 10:00am</div></div>
+        <div class="cal-field"><div class="field-lbl">Descripción:</div><div class="field-val"><div class="field-hl">TEL:3001234567</div></div></div>
+      </div>
+      <div class="routine-note a4">Eso es <em>todo</em>. El sistema hace el resto automáticamente.</div>
+    </div>
+  </div>
+
+  <!-- ══ SLIDE 20 — VERIFICATION ══ -->
+  <div class="slide slide-light" data-slide="20">
+    <div style="max-width:860px;width:100%">
+      <p class="section-label a1">Para implementarlo</p>
+      <h2 class="slide-title a2">La verificación del negocio en Meta</h2>
+      <p class="slide-sub a3">Meta pide confirmar que la empresa es real. Se hace una sola vez.</p>
+      <div class="verif-grid">
+        <div class="verif-card a4">
+          <div class="verif-status y">🟡 Sin verificar — Arranque</div>
+          <div class="verif-row"><span class="vl">Mensajes por mes</span><span class="vv">Hasta 1.000 conversaciones</span></div>
+          <div class="verif-row"><span class="vl">Documentos</span><span class="vv">Ninguno</span></div>
+          <div class="verif-row"><span class="vl">Para activar</span><span class="vv" style="color:var(--green)">Inmediato</span></div>
+          <div class="verif-row"><span class="vl">¿Alcanza?</span><span class="vv" style="color:var(--yellow)">Sí, para los primeros meses</span></div>
+        </div>
+        <div class="verif-card gr a4">
+          <div class="verif-status g">🟢 Verificado — Recomendado</div>
+          <div class="verif-row"><span class="vl">Mensajes por mes</span><span class="vv" style="color:var(--green)">Hasta 100.000</span></div>
+          <div class="verif-row"><span class="vl">Documentos</span><span class="vv">RUT + Cámara Comercio</span></div>
+          <div class="verif-row"><span class="vl">Aprobación</span><span class="vv">2 a 7 días hábiles</span></div>
+          <div class="verif-row"><span class="vl">¿Se repite?</span><span class="vv" style="color:var(--green)">No. Solo una vez.</span></div>
+        </div>
+        <div class="plan-note a5">
+          <span style="font-size:20px">💡</span>
+          <div><strong>Plan de acción:</strong> Arrancamos sin verificación para que el sistema funcione desde el primer día. Durante el primer mes, hacemos el trámite juntos.</div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ══ SLIDE 21 — PLAN ══ -->
+  <div class="slide slide-white" data-slide="21">
+    <div style="max-width:860px;width:100%">
+      <p class="section-label a1">El plan</p>
+      <h2 class="slide-title a2">Todo lo que incluye, sin letra pequeña</h2>
+      <div class="plan-grid">
+        <div class="plan-item a3"><div class="plan-chk">✓</div><div><h4>Confirmación automática 24h antes</h4><p>Mensaje con botones. El paciente responde en un toque.</p></div></div>
+        <div class="plan-item a3"><div class="plan-chk">✓</div><div><h4>Notificación inmediata a su WhatsApp</h4><p>Cada respuesta del paciente llega a su celular al instante.</p></div></div>
+        <div class="plan-item a4"><div class="plan-chk">✓</div><div><h4>Recordatorio 1 hora antes</h4><p>El aviso que más reduce ausencias de último momento.</p></div></div>
+        <div class="plan-item a4"><div class="plan-chk">✓</div><div><h4>Google Calendar conectado</h4><p>Se actualiza solo cuando el paciente confirma o cancela.</p></div></div>
+        <div class="plan-item a5"><div class="plan-chk">✓</div><div><h4>Hasta 2.500 activaciones al mes</h4><p>Sus 400 citas usan ~1.200. Margen de sobra para crecer.</p></div></div>
+        <div class="plan-item a5"><div class="plan-chk">✓</div><div><h4>2 modificaciones mensuales incluidas</h4><p>Para ajustar textos, horarios o cualquier cambio.</p></div></div>
+        <div class="plan-item a6"><div class="plan-chk">✓</div><div><h4>Monitoreo 24/7 de sus automatizaciones</h4><p>Si algo falla, lo detectamos y corregimos. Ustedes no se enteran del problema.</p></div></div>
+        <div class="plan-item a6"><div class="plan-chk">✓</div><div><h4>Soporte email y chat — respuesta en 24h</h4><p>Atención directa para cualquier consulta o ajuste.</p></div></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ══ SLIDE 22 — PRICING ══ -->
+  <div class="slide slide-light" data-slide="22">
+    <div style="max-width:840px;width:100%">
+      <p class="section-label a1">Inversión</p>
+      <h2 class="slide-title a2">Precio especial — Cliente Fundador</h2>
+      <p class="slide-sub a3">Solo para los primeros 5 consultorios. A cambio de su testimonio real después de 2 meses de uso.</p>
+      <div class="price-grid">
+        <div class="price-card fd a4">
+          <div class="price-badge">★ Primeros 3 meses</div>
+          <div class="price-per">Configuración — único pago</div>
+          <div class="price-amt"><span class="cross">$500.000</span><span class="big pur">$250.000</span></div>
+          <div class="price-per" style="margin-top:12px">Mensualidad</div>
+          <div class="price-amt"><span class="cross">$450.000</span><span class="big pur">$270.000</span><span class="mo">/mes</span></div>
+          <div class="savings-box"><div class="savings-n">$790.000</div><div class="savings-l">de ahorro en los primeros 3 meses</div></div>
+        </div>
+        <div class="price-card a4">
+          <div class="price-per">Desde el mes 4 — Precio normal</div>
+          <div class="price-amt"><span class="big">$450.000</span><span class="mo">/mes</span></div>
+          <div class="price-rows">
+            <div class="price-row"><span class="rl">Pago anual</span><span class="rv" style="color:var(--green)">$382.500/mes</span></div>
+            <div class="price-row"><span class="rl">Ahorro anual</span><span class="rv" style="color:var(--green)">$810.000</span></div>
+            <div class="price-row"><span class="rl">Permanencia</span><span class="rv">Ninguna</span></div>
+            <div class="price-row"><span class="rl">Sus datos</span><span class="rv">Siempre suyos</span></div>
+          </div>
+          <div style="margin-top:14px;padding:12px 14px;background:rgba(245,158,11,.07);border:1px solid rgba(245,158,11,.25);border-radius:10px;font-size:12px;color:#92400e;line-height:1.6">
+            <strong>A cambio del precio especial:</strong> Testimonio escrito o en video + métricas reales + permiso para usarlos como referencia.
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ══ SLIDE 23 — ROI ══ -->
+  <div class="slide slide-white" data-slide="23">
+    <div class="roi-layout">
+      <div class="roi-rows a1">
+        <p class="section-label">El retorno</p>
+        <h2 class="slide-title" style="font-size:clamp(20px,2.6vw,32px);margin-bottom:20px">Los números hablan solos</h2>
+        <div class="roi-r nt"><span class="roi-lbl">Citas al mes</span><span class="roi-val">~400</span></div>
+        <div class="roi-r bd"><span class="roi-lbl">Sin el sistema — ausencias estimadas</span><span class="roi-val" style="color:var(--red)">40–80 citas/mes</span></div>
+        <div class="roi-r gd"><span class="roi-lbl">Con el sistema — ausencias estimadas</span><span class="roi-val" style="color:var(--green)">~10–20 citas/mes</span></div>
+        <div class="roi-r pu"><span class="roi-lbl" style="color:var(--text-dark);font-weight:600">Citas recuperadas</span><span class="roi-val" style="color:var(--primary)">~30–60 citas/mes</span></div>
+      </div>
+      <div class="roi-vis a2">
+        <div class="roi-cta">Con solo <em>1 cita recuperada</em><br>al mes, el servicio<br>ya se paga solo.</div>
+        <div style="padding:16px 20px;background:var(--white);border-radius:13px;border:1px solid var(--border);text-align:center;width:100%">
+          <div style="font-size:11.5px;color:var(--text-muted);margin-bottom:5px">Además, su equipo deja de invertir</div>
+          <div style="font-size:32px;font-weight:700;color:var(--primary)">10–15 hrs</div>
+          <div style="font-size:11.5px;color:var(--text-muted)">al mes en llamadas y mensajes manuales</div>
+        </div>
+        <div style="padding:13px 16px;background:rgba(34,197,94,.06);border:1.5px solid rgba(34,197,94,.25);border-radius:10px;font-size:13.5px;font-weight:600;color:#15803d;text-align:center;width:100%">El servicio se paga con la primera semana.</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ══ SLIDE 24 — CLOSING ══ -->
+  <div class="slide slide-dark" data-slide="24">
+    <div class="hero-grid"></div>
+    <div class="hero-orb"></div>
+    <div class="close-content">
+      <div class="hero-eyebrow a1">● ¿Empezamos?</div>
+      <h2 class="close-title a2">Todo sobre la mesa.<br><em>Sin sorpresas.</em></h2>
+      <div class="steps-row a3">
+        <div class="step-pill"><div class="sp-wk">Semana 1–2</div><div class="sp-name">Documentos + Meta</div></div>
+        <div class="arr-sep">→</div>
+        <div class="step-pill"><div class="sp-wk">Semana 3–4</div><div class="sp-name">Configuración técnica</div></div>
+        <div class="arr-sep">→</div>
+        <div class="step-pill hl"><div class="sp-wk">Semana 5–6</div><div class="sp-name">🎉 En vivo</div></div>
+      </div>
+      <p class="close-sub a4">Esta oferta es para los primeros 5 consultorios.<br>Los cupos son limitados y el precio está garantizado.</p>
+      <div class="a5"><a href="#" class="cta-btn">¿Arrancamos? →</a></div>
+      <p class="close-tagline a6">"No les pedimos que confíen en una tecnología que no entienden.<br>Les mostramos exactamente cómo funciona, qué necesitan,<br>qué cuesta y qué pasa si en algún momento deciden no seguir."</p>
+    </div>
+  </div>
+    <div style="max-width:860px;width:100%">
+      <p class="section-label a1">Para implementarlo</p>
+      <h2 class="slide-title a2">La verificación del negocio en Meta</h2>
+      <p class="slide-sub a3">Meta pide confirmar que la empresa es real. Se hace una sola vez.</p>
+      <div class="verif-grid">
+        <div class="verif-card a4">
+          <div class="verif-status y">🟡 Sin verificar — Arranque</div>
+          <div class="verif-row"><span class="vl">Mensajes por mes</span><span class="vv">Hasta 1.000 conversaciones</span></div>
+          <div class="verif-row"><span class="vl">Documentos</span><span class="vv">Ninguno</span></div>
+          <div class="verif-row"><span class="vl">Para activar</span><span class="vv" style="color:var(--green)">Inmediato</span></div>
+          <div class="verif-row"><span class="vl">¿Alcanza?</span><span class="vv" style="color:var(--yellow)">Sí, para los primeros meses</span></div>
+        </div>
+        <div class="verif-card gr a4">
+          <div class="verif-status g">🟢 Verificado — Recomendado</div>
+          <div class="verif-row"><span class="vl">Mensajes por mes</span><span class="vv" style="color:var(--green)">Hasta 100.000</span></div>
+          <div class="verif-row"><span class="vl">Documentos</span><span class="vv">RUT + Cámara Comercio</span></div>
+          <div class="verif-row"><span class="vl">Aprobación</span><span class="vv">2 a 7 días hábiles</span></div>
+          <div class="verif-row"><span class="vl">¿Se repite?</span><span class="vv" style="color:var(--green)">No. Solo una vez.</span></div>
+        </div>
+        <div class="plan-note a5">
+          <span style="font-size:20px">💡</span>
+          <div><strong>Plan de acción:</strong> Arrancamos sin verificación para que el sistema funcione desde el primer día. Durante el primer mes, hacemos el trámite juntos.</div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+
+</div><!-- /presentation -->
+
+<div class="nav">
+  <button class="nav-btn" onclick="prevSlide()">←</button>
+  <div class="nav-counter" id="slideCounter">1 / 24</div>
+  <button class="nav-btn" onclick="nextSlide()">→</button>
+  <div style="width:1px;height:16px;background:rgba(255,255,255,.12);margin:0 2px"></div>
+  <button class="nav-btn" id="fsBtn" onclick="toggleFullscreen()" title="Pantalla completa">⛶</button>
+</div>
+
+<script>
+  const TOTAL = 24;
+  let current = 1;
+  let tlStep = 0;
+
+  function goTo(n) {
+    if (n < 1 || n > TOTAL) return;
+    const old = document.querySelector('.slide.active');
+    if (old) { old.classList.add('exit'); setTimeout(() => old.classList.remove('exit'), 520); old.classList.remove('active'); }
+    current = n;
+    const nxt = document.querySelector(`[data-slide="${current}"]`);
+    if (nxt) nxt.classList.add('active');
+    document.getElementById('slideCounter').textContent = `${current} / ${TOTAL}`;
+    document.getElementById('progressBar').style.width = `${(current / TOTAL) * 100}%`;
+    // Logo: white on slide 1 and last slide (dark bg), purple on all others
+    const logo = document.getElementById('siteLogo');
+    const darkSlides = [1, TOTAL];
+    logo.classList.toggle('on-dark',  darkSlides.includes(current));
+    logo.classList.toggle('on-light', !darkSlides.includes(current));
+    if (current === 6) { waPlayed = false; setTimeout(playWA, 550); }
+    if (current === 5) resetTimeline();
+  }
+
+  function nextSlide() { goTo(current + 1); }
+  function prevSlide() { goTo(current - 1); }
+
+  document.addEventListener('keydown', e => {
+    if (e.key === 'ArrowRight' || e.key === 'ArrowDown') nextSlide();
+    if (e.key === 'ArrowLeft'  || e.key === 'ArrowUp')   prevSlide();
+    if (e.key === 'f' || e.key === 'F') toggleFullscreen();
+  });
+
+  // ── Timeline (slide 5) ──
+  function resetTimeline() {
+    tlStep = 0;
+    document.querySelectorAll('.tl-step').forEach((s, i) => s.classList.toggle('active', i === 0));
+    const btn = document.getElementById('tlBtn');
+    if (btn) { btn.textContent = 'Ver siguiente paso →'; btn.disabled = false; }
+  }
+  function advTimeline() {
+    const steps = document.querySelectorAll('.tl-step');
+    if (tlStep < steps.length - 1) {
+      tlStep++;
+      steps[tlStep].classList.add('active');
+      if (tlStep === steps.length - 1) {
+        const btn = document.getElementById('tlBtn');
+        btn.textContent = '✓ Así funciona el sistema completo';
+        btn.disabled = true;
+      }
+    }
+  }
+
+  // ── WhatsApp animation (slide 6) ──
+  let waPlayed = false;
+  const waSteps = [
+    { type:'in',   delay:0,    txt:'Hola *María*, te recordamos que tienes cita de fisioterapia\n*mañana lunes 14 de abril a las 10:00 AM*\nen *Fisioterapia Ejemplo*.\n\n¿Confirmas tu asistencia?', time:'10:42 AM' },
+    { type:'btns', delay:750,  items:['✅  Confirmar', '❌  Cancelar', '🔄  Reprogramar'] },
+    { type:'out',  delay:1900, txt:'✅  Confirmar', time:'10:43 AM' },
+    { type:'in',   delay:2600, txt:'¡Perfecto, María! Tu cita está confirmada. Te esperamos mañana. 🙌', time:'10:43 AM' },
+  ];
+
+  function playWA() {
+    if (waPlayed) return;
+    waPlayed = true;
+    const c = document.getElementById('waMsgs');
+    c.innerHTML = '';
+    const scrollToBottom = () => requestAnimationFrame(() => { c.scrollTop = c.scrollHeight; });
+    waSteps.forEach(step => {
+      setTimeout(() => {
+        if (step.type === 'in' || step.type === 'out') {
+          const d = document.createElement('div');
+          d.className = `wa-msg ${step.type} show`;
+          d.innerHTML = step.txt.replace(/\*(.+?)\*/g,'<strong>$1</strong>').replace(/\n/g,'<br>');
+          const m = document.createElement('div'); m.className = 'wa-meta'; m.textContent = step.time;
+          d.appendChild(m); c.appendChild(d); scrollToBottom();
+        } else if (step.type === 'btns') {
+          const g = document.createElement('div'); g.className = 'wa-btns';
+          step.items.forEach((txt, i) => {
+            setTimeout(() => {
+              const b = document.createElement('div'); b.className = 'wa-btn-row show';
+              b.textContent = txt; g.appendChild(b); scrollToBottom();
+            }, i * 160);
+          });
+          c.appendChild(g);
+        }
+      }, step.delay);
+    });
+  }
+
+  // ── Fullscreen ──
+  function toggleFullscreen() {
+    if (!document.fullscreenElement) {
+      document.documentElement.requestFullscreen().catch(() => {});
+    } else {
+      document.exitFullscreen().catch(() => {});
+    }
+  }
+  document.addEventListener('fullscreenchange', () => {
+    const btn = document.getElementById('fsBtn');
+    btn.textContent = document.fullscreenElement ? '⛶' : '⛶';
+    btn.style.color = document.fullscreenElement ? 'var(--primary)' : '';
+  });
+
+  // Init
+  document.getElementById('progressBar').style.width = `${(1/TOTAL)*100}%`;
+</script>
+</body>
+</html>
